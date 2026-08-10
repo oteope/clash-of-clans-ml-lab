@@ -1,8 +1,8 @@
 """
-Módulo de configuración para el proyecto Clash of Clans ML Lab.
+Configuration module for the Clash of Clans ML Lab project.
 
-Carga variables de entorno desde .env, verifica la IP pública actual
-y compara con una IP esperada opcional para advertencias de bloqueo.
+Loads environment variables from .env, checks the current public IP,
+and compares it against an optional expected IP for blocking warnings.
 """
 
 import os
@@ -12,32 +12,32 @@ from typing import Optional
 from dotenv import load_dotenv
 import aiohttp
 
-# Configuración de logging
+# Logging configuration
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
-# Cargar variables de entorno desde .env
+# Load environment variables from .env
 load_dotenv()
 
-# Token de Supercell
+# Supercell token
 COC_API_TOKEN: Optional[str] = os.getenv("COC_API_TOKEN")
 
-# IP esperada (opcional)
+# Expected IP (optional)
 EXPECTED_IP: Optional[str] = os.getenv("EXPECTED_IP")
 
 
 async def get_public_ip() -> str:
     """
-    Obtiene la IP pública actual usando api.ipify.org.
+    Retrieve the current public IP using api.ipify.org.
 
     Returns:
-        str: IP pública en formato IPv4.
+        str: Public IP in IPv4 format.
 
     Raises:
-        RuntimeError: Si no se puede obtener la IP.
+        RuntimeError: If the IP cannot be obtained.
     """
     url = "https://api.ipify.org?format=json"
     timeout = aiohttp.ClientTimeout(total=10)
@@ -49,53 +49,53 @@ async def get_public_ip() -> str:
                 data = await response.json()
                 ip = data.get("ip")
                 if not ip:
-                    raise RuntimeError("No se pudo obtener la IP de la respuesta.")
-                logger.info("IP pública obtenida: %s", ip)
+                    raise RuntimeError("Could not obtain IP from the response.")
+                logger.info("Public IP obtained: %s", ip)
                 return ip
     except aiohttp.ClientError as e:
-        logger.error("Error al obtener IP pública: %s", e)
-        raise RuntimeError(f"Error al obtener IP pública: {e}") from e
+        logger.error("Error obtaining public IP: %s", e)
+        raise RuntimeError(f"Error obtaining public IP: {e}") from e
     except Exception as e:
-        logger.error("Error inesperado al obtener IP pública: %s", e)
-        raise RuntimeError(f"Error inesperado al obtener IP pública: {e}") from e
+        logger.error("Unexpected error obtaining public IP: %s", e)
+        raise RuntimeError(f"Unexpected error obtaining public IP: {e}") from e
 
 
 async def verify_ip() -> None:
     """
-    Verifica la IP pública actual contra EXPECTED_IP si está definida.
+    Verify the current public IP against EXPECTED_IP, if defined.
 
-    Si no coincide, registra una advertencia.
+    Logs a warning if they do not match.
     """
     if not EXPECTED_IP:
-        logger.info("EXPECTED_IP no definida en .env, omitiendo verificación de IP.")
+        logger.info("EXPECTED_IP not defined in .env, skipping IP verification.")
         return
 
     try:
         current_ip = await get_public_ip()
     except RuntimeError as e:
-        logger.error("No se pudo verificar la IP: %s", e)
+        logger.error("Could not verify IP: %s", e)
         return
 
     if current_ip != EXPECTED_IP:
         logger.warning(
-            "La IP pública actual (%s) no coincide con la IP esperada (%s). "
-            "El token de Supercell puede estar bloqueado por IP.",
+            "Current public IP (%s) does not match the expected IP (%s). "
+            "The Supercell token may be IP-blocked.",
             current_ip,
             EXPECTED_IP,
         )
     else:
-        logger.info("IP pública coincide con la esperada (%s).", current_ip)
+        logger.info("Public IP matches the expected one (%s).", current_ip)
 
 
 async def main() -> None:
     """
-    Función principal para ejecutar la verificación de IP.
+    Main function to perform the IP verification.
     """
     if not COC_API_TOKEN:
-        logger.error("COC_API_TOKEN no está definido en .env")
+        logger.error("COC_API_TOKEN is not defined in .env")
         return
 
-    logger.info("COC_API_TOKEN cargado correctamente.")
+    logger.info("COC_API_TOKEN loaded successfully.")
     await verify_ip()
 
 
