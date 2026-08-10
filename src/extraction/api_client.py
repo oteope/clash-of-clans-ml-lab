@@ -120,6 +120,39 @@ class CoCClient:
 
         return members
 
+    async def get_location_clans(self, location_id: str = "global", limit: int = 100) -> list[dict]:
+        """
+        Fetch clan rankings for a location using cursor‑based pagination.
+
+        Returns a list of clan ranking entries (may be empty if the location
+        has no clans or the endpoint is unknown).
+        """
+        ranking: list[dict] = []
+        cursor: str | None = None
+
+        while True:
+            path = f"/locations/{location_id}/rankings/clans?limit={limit}"
+            if cursor:
+                path += f"&after={cursor}"
+
+            data = await self._request("GET", path)
+            if data is None:
+                break
+
+            items = data.get("items", [])
+            ranking.extend(items)
+
+            if len(items) < limit:
+                break
+
+            paging = data.get("paging") or {}
+            cursors = paging.get("cursors") or {}
+            cursor = cursors.get("after")
+            if not cursor:
+                break
+
+        return ranking
+
     async def get_current_war(self, clan_tag: str) -> dict | None:
         """
         Retrieve current war information for the given clan.
