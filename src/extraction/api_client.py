@@ -82,6 +82,44 @@ class CoCClient:
         path = f"/clans/{encoded_tag}"
         return await self._request("GET", path)
 
+    async def get_clan_members(self, clan_tag: str) -> list[dict]:
+        """
+        Fetch all clan members using cursor‑based pagination.
+
+        Returns a list of member dictionaries (may be empty if clan not found).
+        Raises IPAddressNotWhitelisted on 403.
+        """
+        encoded_tag = self._format_tag(clan_tag)
+        members: list[dict] = []
+        limit = 100  # API maximum
+        cursor: str | None = None
+
+        while True:
+            path = f"/clans/{encoded_tag}/members?limit={limit}"
+            if cursor:
+                path += f"&after={cursor}"
+
+            data = await self._request("GET", path)
+            if data is None:
+                # Clan not found (404) → nothing to return
+                break
+
+            items = data.get("items", [])
+            members.extend(items)
+
+            if len(items) < limit:
+                # Last page reached
+                break
+
+            # Extract the next cursor from the paging object
+            paging = data.get("paging") or {}
+            cursors = paging.get("cursors") or {}
+            cursor = cursors.get("after")
+            if not cursor:
+                break
+
+        return members
+
     async def get_current_war(self, clan_tag: str) -> dict | None:
         """
         Retrieve current war information for the given clan.
