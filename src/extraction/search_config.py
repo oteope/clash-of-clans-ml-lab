@@ -158,8 +158,14 @@ def select_unused_configs(
                 used_time = used_time.astimezone(datetime.timezone.utc)
         except (ValueError, TypeError):
             continue
+
         if now - used_time < cooldown:
-            fp = _config_fingerprint(entry.get("filters", {}))
+            # Normalize filter keys before computing fingerprint to handle
+            # old history entries that may still contain camelCase keys.
+            filters_raw = entry.get("filters", {})
+            if filters_raw:
+                filters_raw = _normalize_filters(filters_raw)
+            fp = _config_fingerprint(filters_raw)
             used_fingerprints.add(fp)
 
     selected: list[dict] = []
