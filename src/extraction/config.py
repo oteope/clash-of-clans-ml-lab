@@ -7,6 +7,7 @@ and compares it against an optional expected IP for blocking warnings.
 
 import os
 import logging
+import pathlib
 from typing import Optional
 
 from dotenv import load_dotenv
@@ -27,6 +28,18 @@ COC_API_TOKEN: Optional[str] = os.getenv("COC_API_TOKEN")
 
 # Expected IP (optional)
 EXPECTED_IP: Optional[str] = os.getenv("EXPECTED_IP")
+
+# ---------------------------------------------------------------------------
+# Diversified search configuration settings
+# ---------------------------------------------------------------------------
+SEARCH_HISTORY_PATH: pathlib.Path = pathlib.Path("data") / "raw" / "search_history.json"
+# Maximum results requested per search call (API limit per page is 200)
+SEARCH_LIMIT: int = 200
+# Number of different search configurations tried per region in a single run
+SEARCHES_PER_REGION_PER_RUN: int = 5
+# After all configurations for a region have been used, they become eligible
+# again after this many minutes (here ~30 days).
+SEARCH_COOLDOWN_MINUTES: int = 60 * 24 * 30
 
 
 async def get_public_ip() -> str:

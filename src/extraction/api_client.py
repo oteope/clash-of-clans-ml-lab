@@ -7,6 +7,7 @@ All code, docstrings, and logs are in English.
 import asyncio
 import logging
 import random
+from urllib.parse import urlencode
 
 import aiohttp
 
@@ -164,6 +165,76 @@ class CoCClient:
         encoded_tag = self._format_tag(clan_tag)
         path = f"/clans/{encoded_tag}/currentwar"
         return await self._request("GET", path)
+
+    # ------------------------------------------------------------------
+    # Diversified clan search (configurable filters)
+    # ------------------------------------------------------------------
+    async def search_clans(
+        self,
+        location_id: str | None = None,
+        min_members: int | None = None,
+        max_members: int | None = None,
+        min_clan_points: int | None = None,
+        max_clan_points: int | None = None,
+        min_clan_level: int | None = None,
+        max_clan_level: int | None = None,
+        limit: int = 200,
+    ) -> list[dict]:
+        """
+        Fetch clans from the /clans search endpoint using the provided filters.
+
+        Supports cursor‑based pagination (``after``) and respects the existing
+        rate‑limiting / retry logic.
+
+        Returns a list of clan dictionaries (may be empty if the search yields
+        no results or the response is 404).
+        """
+        params: list[tuple[str, str]] = []
+        if location_id:
+            params.append(("locationId", location_id))
+        if min_members is not None:
+            params.append(("minMembers", str(min_members)))
+        if max_members is not None:
+            params.append(("maxMembers", str(max_members)))
+        if min_clan_points is not None:
+            params.append(("minClanPoints", str(min_clan_points)))
+        if max_clan_points is not None:
+            params.append(("maxClanPoints", str(max_clan_points)))
+        if min_clan_level is not None:
+            params.append(("minClanLevel", str(min_clan_level)))
+        if max_clan_level is not None:
+            params.append(("maxClanLevel", str(max_clan_level)))
+        if limit:
+            params.append(("limit", str(limit)))
+
+        base_path = "/clans"
+        items: list[dict] = []
+        cursor: str | None = None
+
+        while True:
+            cur_params = list(params)
+            if cursor:
+                cur_params.append(("after", cursor))
+            query = urlencode(cur_params) if cur_params else ""
+            path = f"{base_path}?{query}" if query else base_path
+
+            data = await self._request("GET", path)
+            if data is None:
+                break
+
+            items_batch = data.get("items", [])
+            items.extend(items_batch)
+
+            if len(items_batch) < limit:
+                break
+
+            paging = data.get("paging") or {}
+            cursors = paging.get("cursors") or {}
+            cursor = cursors.get("after")
+            if not cursor:
+                break
+
+        return items
 
     # ------------------------------------------------------------------
     # Core request method with rate limiting, retries and error handling

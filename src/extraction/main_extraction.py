@@ -1,23 +1,32 @@
 """
 Main entry point for the Phase 1 Extraction layer – Recursive Clan/Player Crawler.
 
-Seeds clan discovery from location rankings, then recursively follows clan
-memberships.  Disk‑based de‑duplication avoids re‑fetching resources that are
-already stored under data/raw/.
+Uses a diversified search strategy: different filter combinations are applied
+to the /clans endpoint so that each run explores new slices of the clan population.
 """
 import asyncio
+import datetime
 import json
 import logging
 import pathlib
 
 from src.extraction.api_client import CoCClient
-from src.extraction.config import verify_ip
+from src.extraction.config import (
+    verify_ip,
+    SEARCHES_PER_REGION_PER_RUN,
+)
+from src.extraction.search_config import (
+    generate_search_configurations,
+    load_search_history,
+    save_search_history,
+    select_unused_configs,
+)
 from src.extraction.storage import save_raw_json
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Multi‑location seeding – at least 10 major regions.
+# Multi‑location seeding – at least 10 major regions (preserved from original).
 # ---------------------------------------------------------------------------
 LOCATION_IDS: list[str] = [
     "global",        # Worldwide
@@ -50,29 +59,6 @@ def _raw_file_exists(category: str, identifier: str) -> bool:
     """Return True if the raw JSON file for *category* / *identifier* already exists."""
     target = pathlib.Path("data") / "raw" / category / f"{identifier}.json"
     return target.exists()
-
-
-# ---------------------------------------------------------------------------
-# Discovery helpers
-# ---------------------------------------------------------------------------
-
-async def discover_clans_from_locations(client: CoCClient,
-                                        location_ids: list[str]) -> set[str]:
-    """Collect distinct clan tags from the top‑200 rankings of each location."""
-    clan_tags: set[str] = set()
-
-    for loc_id in location_ids:
-        logger.info("Fetching clan rankings for location %s …", loc_id)
-        ranking = await client.get_location_clans(location_id=loc_id, limit=200)
-        location_tags = set()
-        for entry in ranking:
-            tag = entry.get("tag")
-            if tag:
-                location_tags.add(tag)
-        clan_tags.update(location_tags)
-        logger.info("Location %s contributed %d unique clan tags", loc_id, len(location_tags))
-
-    return clan_tags
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +173,7 @@ async def _process_one_clan(
 # ---------------------------------------------------------------------------
 
 async def main() -> None:
-    """Verify IP, seed the crawler from location rankings, and run the main loop."""
+    """Verify IP, seed the crawler with diversified searches, and run the main loop."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(message)s",
@@ -195,16 +181,77 @@ async def main() -> None:
 
     logger.info("Verifying public IP whitelisting …")
     await verify_ip()
-    logger.info("IP verified. Starting discovery across %d locations.", len(LOCATION_IDS))
+    logger.info(
+        "IP verified. Starting diversified discovery across %d locations.",
+        len(LOCATION_IDS),
+    )
 
     client = CoCClient()
     try:
-        # 1. Seed discovery from multi‑location rankings (top 200 each)
-        initial_clans = await discover_clans_from_locations(client, LOCATION_IDS)
-        logger.info("Initial seed contains %d unique clan tags", len(initial_clans))
+        # 1. Load or generate the search configuration pool and history
+        search_pool = generate_search_configurations()
+        search_history = load_search_history()
+        all_seed_tags: set[str] = set()
 
-        # 2. Recursive crawl
-        await process_clans(client, initial_clans)
+        # 2. For each location, select unused configurations and execute searches
+        for loc_id in LOCATION_IDS:
+            logger.info("Selecting unused configurations for location %s ...", loc_id)
+            selected = select_unused_configs(
+                loc_id,
+                search_history,
+                search_pool,
+                max_searches=SEARCHES_PER_REGION_PER_RUN,
+            )
+            logger.info(
+                "Selected %d configuration(s) for location %s",
+                len(selected),
+                loc_id,
+            )
+
+            for cfg in selected:
+                logger.info("  - filters: %s", cfg)
+                try:
+                    clans = await client.search_clans(
+                        location_id=loc_id,
+                        **cfg,
+                    )
+                except Exception as exc:
+                    logger.error(
+                        "Search failed for location %s with filters %s: %s",
+                        loc_id,
+                        cfg,
+                        exc,
+                    )
+                    continue
+
+                tags = {entry.get("tag") for entry in clans if entry.get("tag")}
+                new_count = sum(1 for tag in tags if not _raw_file_exists("clans", tag))
+                all_seed_tags.update(tags)
+
+                # Record usage
+                entry = {
+                    "location_id": loc_id,
+                    "filters": cfg,
+                    "used_at": datetime.datetime.utcnow().isoformat(),
+                    "results": len(clans),
+                    "new_clans": new_count,
+                }
+                search_history.append(entry)
+                logger.info(
+                    "Search completed: %d results, %d new clans.",
+                    len(clans),
+                    new_count,
+                )
+
+        # 3. Persist the updated history
+        save_search_history(search_history)
+        logger.info(
+            "Initial seed from search configurations contains %d unique clan tags.",
+            len(all_seed_tags),
+        )
+
+        # 4. Run the recursive crawl using the seed
+        await process_clans(client, all_seed_tags)
     finally:
         await client.close()
         logger.info("Client closed. Extraction finished.")
