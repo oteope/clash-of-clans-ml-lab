@@ -41,6 +41,10 @@ SEARCHES_PER_REGION_PER_RUN: int = 5
 # again after this many minutes (here ~30 days).
 SEARCH_COOLDOWN_MINUTES: int = 60 * 24 * 30
 
+# Fallback numeric ID for the "global" location in case we cannot fetch
+# the locations list from the API.
+GLOBAL_BACKUP_LOCATION_ID: str = "32000000"
+
 
 async def get_public_ip() -> str:
     """

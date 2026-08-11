@@ -237,6 +237,46 @@ class CoCClient:
         return items
 
     # ------------------------------------------------------------------
+    # Location list endpoint (for future use)
+    # ------------------------------------------------------------------
+    async def get_locations(self) -> list[dict]:
+        """
+        Fetch the complete list of locations from /locations.
+
+        Returns a list of location dictionaries (may be empty if the endpoint
+        responds with 404).
+        """
+        path_base = "/locations"
+        items: list[dict] = []
+        cursor: str | None = None
+        limit = 100
+
+        while True:
+            query_parts = [f"limit={limit}"]
+            if cursor:
+                query_parts.append(f"after={cursor}")
+            query_params = "&".join(query_parts)
+            full_path = f"{path_base}?{query_params}"
+
+            data = await self._request("GET", full_path)
+            if data is None:
+                break
+
+            batch = data.get("items", [])
+            items.extend(batch)
+
+            if len(batch) < limit:
+                break
+
+            paging = data.get("paging") or {}
+            cursors = paging.get("cursors") or {}
+            cursor = cursors.get("after")
+            if not cursor:
+                break
+
+        return items
+
+    # ------------------------------------------------------------------
     # Core request method with rate limiting, retries and error handling
     # ------------------------------------------------------------------
 

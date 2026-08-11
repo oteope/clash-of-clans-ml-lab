@@ -2,7 +2,7 @@ import asyncio
 import unittest
 from unittest.mock import AsyncMock, MagicMock
 
-from src.extraction.main_extraction import _perform_search
+from src.extraction.main_extraction import _perform_search, _resolve_location_ids
 from src.extraction.api_client import CoCClient
 
 
@@ -10,6 +10,7 @@ class TestMainExtraction(unittest.TestCase):
     def setUp(self):
         self.client = MagicMock(spec=CoCClient)
         self.client.search_clans = AsyncMock()
+        self.client.get_locations = AsyncMock(return_value=[])
 
     def test_successful_search_updates_history(self):
         """A successful search must add an entry to the history list."""
@@ -55,3 +56,29 @@ class TestMainExtraction(unittest.TestCase):
         )
         self.assertEqual(tags, set())
         self.assertEqual(len(history), 0)
+
+    # ---------- tests for location resolution ----------
+    def test_resolve_location_ids_converts_global_to_none(self):
+        """'global' must become None to signal a worldwide search (no locationId)."""
+        locations = [{"id": 32000000, "name": "Global"}]
+        self.client.get_locations.return_value = locations
+        raw = ["global", "32000006"]
+        resolved = asyncio.run(_resolve_location_ids(self.client, raw))
+        self.assertEqual(resolved, [None, "32000006"])
+
+    def test_resolve_location_ids_preserves_numeric(self):
+        """Already numeric location IDs must stay unchanged."""
+        locations = [{"id": 32000001, "name": "Test"}]
+        self.client.get_locations.return_value = locations
+        raw = ["32000006", "32000001"]
+        resolved = asyncio.run(_resolve_location_ids(self.client, raw))
+        self.assertEqual(resolved, ["32000006", "32000001"])
+
+    def test_resolve_location_ids_fallback_if_no_api(self):
+        """If the API call fails, fallback must handle 'global' (return None)."""
+        self.client.get_locations.side_effect = Exception("network error")
+        raw = ["global", "32000006"]
+        resolved = asyncio.run(_resolve_location_ids(self.client, raw))
+        # 'global' -> None, numeric stays numeric
+        self.assertIn(None, resolved)
+        self.assertIn("32000006", resolved)

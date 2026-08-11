@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # Multi‑location seeding – at least 10 major regions (preserved from original).
 # ---------------------------------------------------------------------------
 LOCATION_IDS: list[str] = [
-    "global",        # Worldwide
+    "global",        # Worldwide (will be resolved to None => no location filter)
     "32000006",      # Spain
     "32000107",      # United States
     "32000154",      # Mexico
@@ -173,9 +173,10 @@ async def _process_one_clan(
 # ---------------------------------------------------------------------------
 async def _perform_search(
     client: CoCClient,
-    loc_id: str,
+    loc_id: str | None,
     cfg: dict,
     search_history: list[dict],
+    record_location_id: str | None = None,
 ) -> tuple[set[str], int, int]:
     """
     Execute a single clan search with the given configuration.
@@ -189,7 +190,7 @@ async def _perform_search(
     except Exception as exc:
         logger.error(
             "Search failed for location %s with filters %s: %s",
-            loc_id,
+            record_location_id or loc_id,
             cfg,
             exc,
         )
@@ -200,7 +201,7 @@ async def _perform_search(
 
     # Record only completed searches
     entry = {
-        "location_id": loc_id,
+        "location_id": record_location_id if record_location_id is not None else loc_id,
         "filters": cfg,
         "used_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "results": len(clans),
@@ -208,6 +209,56 @@ async def _perform_search(
     }
     search_history.append(entry)
     return tags, len(clans), new_count
+
+
+# ---------------------------------------------------------------------------
+# Location ID resolution
+# ---------------------------------------------------------------------------
+async def _resolve_location_ids(client: CoCClient, raw_ids: list[str]) -> list[str | None]:
+    """
+    Convert symbolic location names (e.g. 'global') into numeric location IDs
+    or None when the location represents a worldwide search.
+
+    Fetches the real location list from the API; if that fails, falls back to
+    a predefined mapping for known symbolic names.
+    """
+    # 1. Fetch location list from the API
+    try:
+        api_locations = await client.get_locations()
+    except Exception:
+        logger.warning("Failed to fetch location list from API. Will rely on fallback mapping.")
+        api_locations = []
+
+    # 2. Build a name -> id lookup (case‑insensitive)
+    name_to_id: dict[str, str] = {}
+    for loc in api_locations:
+        name = (loc.get("name") or "").strip().lower()
+        loc_id = loc.get("id")
+        if name and loc_id is not None:
+            name_to_id[name] = str(loc_id)
+
+    # 3. Prepare the result
+    resolved: list[str | None] = []
+    for raw in raw_ids:
+        # If the entry already looks like a numeric ID, keep it as‑is
+        if raw.isdigit():
+            resolved.append(raw)
+            continue
+
+        # Otherwise treat it as a symbolic name
+        normalized = raw.strip().lower()
+        if normalized == "global":
+            # "global" means "do not filter by location"
+            resolved.append(None)
+            continue
+
+        numeric_id = name_to_id.get(normalized)
+        if numeric_id:
+            resolved.append(numeric_id)
+        else:
+            logger.warning("Unknown location name '%s' – skipping.", raw)
+
+    return resolved
 
 
 # ---------------------------------------------------------------------------
@@ -230,16 +281,24 @@ async def main() -> None:
 
     client = CoCClient()
     try:
-        # 1. Load or generate the search configuration pool and history
+        # 1. Resolve location IDs (replace symbolic names like "global")
+        location_ids = await _resolve_location_ids(client, LOCATION_IDS)
+        logger.info("Resolved location IDs: %s", location_ids)
+
+        # 2. Load or generate the search configuration pool and history
         search_pool = generate_search_configurations()
         search_history = load_search_history()
         all_seed_tags: set[str] = set()
 
-        # 2. For each location, select unused configurations and execute searches
-        for loc_id in LOCATION_IDS:
-            logger.info("Selecting unused configurations for location %s ...", loc_id)
+        # 3. For each resolved location entry, select unused configurations and
+        #    execute searches.  When entry is None (worldwide search) we pass
+        #    location_id=None to the API and use "global" as the history key.
+        for loc_id in location_ids:
+            # Determine the record key for search_history and the label for logs
+            record_loc = loc_id if loc_id is not None else "global"
+            logger.info("Selecting unused configurations for location %s ...", record_loc)
             selected = select_unused_configs(
-                loc_id,
+                record_loc,
                 search_history,
                 search_pool,
                 max_searches=SEARCHES_PER_REGION_PER_RUN,
@@ -247,13 +306,17 @@ async def main() -> None:
             logger.info(
                 "Selected %d configuration(s) for location %s",
                 len(selected),
-                loc_id,
+                record_loc,
             )
 
             for cfg in selected:
                 logger.info("  - filters: %s", cfg)
                 tags, results, new_count = await _perform_search(
-                    client, loc_id, cfg, search_history
+                    client,
+                    loc_id,                        # actual ID for API call (None => worldwide)
+                    cfg,
+                    search_history,
+                    record_location_id=record_loc,  # what we store in history
                 )
                 if not tags:
                     # The error has already been logged inside _perform_search
@@ -266,14 +329,14 @@ async def main() -> None:
                     new_count,
                 )
 
-        # 3. Persist the updated history
+        # 4. Persist the updated history
         save_search_history(search_history)
         logger.info(
             "Initial seed from search configurations contains %d unique clan tags.",
             len(all_seed_tags),
         )
 
-        # 4. Run the recursive crawl using the seed
+        # 5. Run the recursive crawl using the seed
         await process_clans(client, all_seed_tags)
     finally:
         await client.close()
