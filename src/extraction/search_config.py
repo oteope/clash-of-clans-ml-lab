@@ -14,6 +14,24 @@ from src.extraction.config import SEARCH_HISTORY_PATH, SEARCHES_PER_REGION_PER_R
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Helpers for normalising filter keys (camelCase -> snake_case)
+# ---------------------------------------------------------------------------
+_CAMEL_TO_SNAKE = {
+    "minMembers": "min_members",
+    "maxMembers": "max_members",
+    "minClanLevel": "min_clan_level",
+    "maxClanLevel": "max_clan_level",
+    "minClanPoints": "min_clan_points",
+    "maxClanPoints": "max_clan_points",
+}
+
+
+def _normalize_filters(filters: dict) -> dict:
+    """Convert camelCase filter keys to snake_case, keeping unknown keys unchanged."""
+    return {_CAMEL_TO_SNAKE.get(k, k): v for k, v in filters.items()}
+
+
 def _config_fingerprint(filters: dict) -> frozenset:
     """Return an order‑independent fingerprint for a filter dictionary."""
     return frozenset((k, v) for k, v in filters.items() if v is not None)
@@ -30,25 +48,25 @@ def generate_search_configurations() -> list[dict]:
     Only pairwise combinations are generated to keep the pool manageable.
     """
     member_ranges = [
-        {"minMembers": 1, "maxMembers": 10},
-        {"minMembers": 11, "maxMembers": 20},
-        {"minMembers": 21, "maxMembers": 30},
-        {"minMembers": 31, "maxMembers": 40},
-        {"minMembers": 41, "maxMembers": 50},
+        {"min_members": 1, "max_members": 10},
+        {"min_members": 11, "max_members": 20},
+        {"min_members": 21, "max_members": 30},
+        {"min_members": 31, "max_members": 40},
+        {"min_members": 41, "max_members": 50},
     ]
     level_ranges = [
-        {"minClanLevel": 1, "maxClanLevel": 5},
-        {"minClanLevel": 6, "maxClanLevel": 10},
-        {"minClanLevel": 11, "maxClanLevel": 15},
-        {"minClanLevel": 16, "maxClanLevel": 20},
+        {"min_clan_level": 1, "max_clan_level": 5},
+        {"min_clan_level": 6, "max_clan_level": 10},
+        {"min_clan_level": 11, "max_clan_level": 15},
+        {"min_clan_level": 16, "max_clan_level": 20},
     ]
     points_ranges = [
-        {"minClanPoints": 0, "maxClanPoints": 1000},
-        {"minClanPoints": 1001, "maxClanPoints": 3000},
-        {"minClanPoints": 3001, "maxClanPoints": 5000},
-        {"minClanPoints": 5001, "maxClanPoints": 10000},
-        {"minClanPoints": 10001, "maxClanPoints": 40000},
-        {"minClanPoints": 40001, "maxClanPoints": 999999},
+        {"min_clan_points": 0, "max_clan_points": 1000},
+        {"min_clan_points": 1001, "max_clan_points": 3000},
+        {"min_clan_points": 3001, "max_clan_points": 5000},
+        {"min_clan_points": 5001, "max_clan_points": 10000},
+        {"min_clan_points": 10001, "max_clan_points": 40000},
+        {"min_clan_points": 40001, "max_clan_points": 999999},
     ]
 
     configs: list[dict] = []
@@ -80,13 +98,19 @@ def _history_path() -> pathlib.Path:
 
 
 def load_search_history() -> list[dict]:
-    """Load the list of previously executed searches from disk."""
+    """Load the list of previously executed searches from disk,
+    normalising any old camelCase filter keys."""
     path = _history_path()
     if not path.exists():
         logger.debug("No search history file found at %s, starting fresh.", path)
         return []
     with path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+        history: list[dict] = json.load(f)
+
+    # Normalise filter keys in every entry
+    for entry in history:
+        entry["filters"] = _normalize_filters(entry.get("filters", {}))
+    return history
 
 
 def save_search_history(history: list[dict]) -> None:
@@ -116,7 +140,7 @@ def select_unused_configs(
     same *location_id* and the same fingerprint that was recorded within the
     cooldown window.
     """
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     cooldown = datetime.timedelta(minutes=cooldown_minutes)
 
     used_fingerprints: set[frozenset] = set()
@@ -128,6 +152,10 @@ def select_unused_configs(
             continue
         try:
             used_time = datetime.datetime.fromisoformat(used_at_str)
+            if used_time.tzinfo is None:
+                used_time = used_time.replace(tzinfo=datetime.timezone.utc)
+            else:
+                used_time = used_time.astimezone(datetime.timezone.utc)
         except (ValueError, TypeError):
             continue
         if now - used_time < cooldown:

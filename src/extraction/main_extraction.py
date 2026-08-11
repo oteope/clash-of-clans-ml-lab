@@ -169,6 +169,48 @@ async def _process_one_clan(
 
 
 # ---------------------------------------------------------------------------
+# Helper for diversified search (stores history only on success)
+# ---------------------------------------------------------------------------
+async def _perform_search(
+    client: CoCClient,
+    loc_id: str,
+    cfg: dict,
+    search_history: list[dict],
+) -> tuple[set[str], int, int]:
+    """
+    Execute a single clan search with the given configuration.
+
+    Returns:
+      (tags, results_count, new_clans_count)
+      On failure the returned sets are empty and history is **not** modified.
+    """
+    try:
+        clans = await client.search_clans(location_id=loc_id, **cfg)
+    except Exception as exc:
+        logger.error(
+            "Search failed for location %s with filters %s: %s",
+            loc_id,
+            cfg,
+            exc,
+        )
+        return set(), 0, 0
+
+    tags = {entry.get("tag") for entry in clans if entry.get("tag")}
+    new_count = sum(1 for tag in tags if not _raw_file_exists("clans", tag))
+
+    # Record only completed searches
+    entry = {
+        "location_id": loc_id,
+        "filters": cfg,
+        "used_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "results": len(clans),
+        "new_clans": new_count,
+    }
+    search_history.append(entry)
+    return tags, len(clans), new_count
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -210,36 +252,17 @@ async def main() -> None:
 
             for cfg in selected:
                 logger.info("  - filters: %s", cfg)
-                try:
-                    clans = await client.search_clans(
-                        location_id=loc_id,
-                        **cfg,
-                    )
-                except Exception as exc:
-                    logger.error(
-                        "Search failed for location %s with filters %s: %s",
-                        loc_id,
-                        cfg,
-                        exc,
-                    )
+                tags, results, new_count = await _perform_search(
+                    client, loc_id, cfg, search_history
+                )
+                if not tags:
+                    # The error has already been logged inside _perform_search
                     continue
 
-                tags = {entry.get("tag") for entry in clans if entry.get("tag")}
-                new_count = sum(1 for tag in tags if not _raw_file_exists("clans", tag))
                 all_seed_tags.update(tags)
-
-                # Record usage
-                entry = {
-                    "location_id": loc_id,
-                    "filters": cfg,
-                    "used_at": datetime.datetime.utcnow().isoformat(),
-                    "results": len(clans),
-                    "new_clans": new_count,
-                }
-                search_history.append(entry)
                 logger.info(
                     "Search completed: %d results, %d new clans.",
-                    len(clans),
+                    results,
                     new_count,
                 )
 
