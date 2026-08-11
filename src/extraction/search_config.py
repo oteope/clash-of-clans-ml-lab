@@ -47,8 +47,10 @@ def generate_search_configurations() -> list[dict]:
 
     Only pairwise combinations are generated to keep the pool manageable.
     """
+    # The Clash of Clans API requires minMembers >= 2,
+    # therefore the first band starts at 2 instead of 1.
     member_ranges = [
-        {"min_members": 1, "max_members": 10},
+        {"min_members": 2, "max_members": 10},
         {"min_members": 11, "max_members": 20},
         {"min_members": 21, "max_members": 30},
         {"min_members": 31, "max_members": 40},
