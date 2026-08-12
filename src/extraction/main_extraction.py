@@ -171,44 +171,11 @@ async def _process_one_clan(
 # ---------------------------------------------------------------------------
 # Helper for diversified search (stores history only on success)
 # ---------------------------------------------------------------------------
-async def _perform_search(
-    client: CoCClient,
-    loc_id: str | None,
-    cfg: dict,
-    search_history: list[dict],
-    record_location_id: str | None = None,
-) -> tuple[set[str], int, int]:
-    """
-    Execute a single clan search with the given configuration.
-
-    Returns:
-      (tags, results_count, new_clans_count)
-      On failure the returned sets are empty and history is **not** modified.
-    """
-    try:
-        clans = await client.search_clans(location_id=loc_id, **cfg)
-    except Exception as exc:
-        logger.error(
-            "Search failed for location %s with filters %s: %s",
-            record_location_id or loc_id,
-            cfg,
-            exc,
-        )
-        return set(), 0, 0
-
-    tags = {entry.get("tag") for entry in clans if entry.get("tag")}
-    new_count = sum(1 for tag in tags if not _raw_file_exists("clans", tag))
-
-    # Record only completed searches
-    entry = {
-        "location_id": record_location_id if record_location_id is not None else loc_id,
-        "filters": cfg,
-        "used_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "results": len(clans),
-        "new_clans": new_count,
-    }
-    search_history.append(entry)
-    return tags, len(clans), new_count
+async def _search_clans(client: CoCClient,
+                        location_id: str | None,
+                        cfg: dict) -> list[dict]:
+    """Execute a single clan search with the given configuration."""
+    return await client.search_clans(location_id=location_id, **cfg)
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +255,7 @@ async def main() -> None:
         # 2. Load or generate the search configuration pool and history
         search_pool = generate_search_configurations()
         search_history = load_search_history()
-        all_seed_tags: set[str] = set()
+        all_new_seed: set[str] = set()
 
         # 3. For each resolved location entry, select unused configurations and
         #    execute searches.  When entry is None (worldwide search) we pass
@@ -311,33 +278,52 @@ async def main() -> None:
 
             for cfg in selected:
                 logger.info("  - filters: %s", cfg)
-                tags, results, new_count = await _perform_search(
-                    client,
-                    loc_id,                        # actual ID for API call (None => worldwide)
-                    cfg,
-                    search_history,
-                    record_location_id=record_loc,  # what we store in history
-                )
-                if not tags:
-                    # The error has already been logged inside _perform_search
+                try:
+                    clans = await _search_clans(client, loc_id, cfg)
+                except Exception as exc:
+                    logger.error(
+                        "Search failed for location %s with filters %s: %s",
+                        record_loc,
+                        cfg,
+                        exc,
+                    )
                     continue
 
-                all_seed_tags.update(tags)
+                tags = {entry.get("tag") for entry in clans if entry.get("tag")}
+                results = len(clans)
+
+                # Only count clans that are genuinely new **and** haven't been discovered
+                # by an earlier search in this same run.
+                genuinely_new = {
+                    tag for tag in tags
+                    if not _raw_file_exists("clans", tag) and tag not in all_new_seed
+                }
+                all_new_seed.update(genuinely_new)
+
+                entry = {
+                    "location_id": record_loc,
+                    "filters": cfg,
+                    "used_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+                    "results": results,
+                    "new_clans": len(genuinely_new),
+                }
+                search_history.append(entry)
+
                 logger.info(
                     "Search completed: %d results, %d new clans.",
                     results,
-                    new_count,
+                    len(genuinely_new),
                 )
 
         # 4. Persist the updated history
         save_search_history(search_history)
         logger.info(
             "Initial seed from search configurations contains %d unique clan tags.",
-            len(all_seed_tags),
+            len(all_new_seed),
         )
 
-        # 5. Run the recursive crawl using the seed
-        await process_clans(client, all_seed_tags)
+        # 5. Run the recursive crawl using only the genuinely new clans
+        await process_clans(client, all_new_seed)
     finally:
         await client.close()
         logger.info("Client closed. Extraction finished.")
