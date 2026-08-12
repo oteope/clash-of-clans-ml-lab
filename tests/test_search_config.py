@@ -10,8 +10,8 @@ from src.extraction.search_config import (
 
 class TestSearchConfig(unittest.TestCase):
     def test_fingerprint_ordering_ignored(self):
-        cfg1 = {"min_members": 1, "max_members": 10}
-        cfg2 = {"max_members": 10, "min_members": 1}
+        cfg1 = {"min_members": 2, "max_members": 10}
+        cfg2 = {"max_members": 10, "min_members": 2}
         self.assertEqual(_config_fingerprint(cfg1), _config_fingerprint(cfg2))
 
     def test_generate_configs_uses_allowed_keys(self):
@@ -51,13 +51,13 @@ class TestSearchConfig(unittest.TestCase):
 
     def test_select_returns_only_unused(self):
         pool = [
-            {"min_members": 1},
             {"min_members": 2},
+            {"min_members": 3},
         ]
         history = [
             {
                 "location_id": "X",
-                "filters": {"min_members": 1},
+                "filters": {"min_members": 2},
                 "used_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             }
         ]
@@ -65,17 +65,17 @@ class TestSearchConfig(unittest.TestCase):
             "X", history, pool, max_searches=3, cooldown_minutes=100000
         )
         self.assertEqual(len(selected), 1)
-        self.assertEqual(selected[0], {"min_members": 2})
+        self.assertEqual(selected[0], {"min_members": 3})
 
     def test_select_respects_cooldown(self):
-        pool = [{"min_members": 1}]
+        pool = [{"min_members": 2}]
         now = datetime.datetime.now(datetime.timezone.utc)
         # entry used a long time ago (more than cooldown)
         old_time = now - datetime.timedelta(minutes=120)
         history = [
             {
                 "location_id": "loc",
-                "filters": {"min_members": 1},
+                "filters": {"min_members": 2},
                 "used_at": old_time.isoformat(),
             }
         ]
@@ -85,11 +85,11 @@ class TestSearchConfig(unittest.TestCase):
         self.assertEqual(len(selected), 1)  # eligible again after cooldown
 
     def test_select_empty_if_exhausted(self):
-        pool = [{"min_members": 1}]
+        pool = [{"min_members": 2}]
         history = [
             {
                 "location_id": "loc",
-                "filters": {"min_members": 1},
+                "filters": {"min_members": 2},
                 "used_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             }
         ]
@@ -124,11 +124,11 @@ class TestSearchConfig(unittest.TestCase):
     def test_select_ignores_camel_case_history(self):
         """History entries with camelCase filters should be treated as if
         they were the corresponding snake_case entry."""
-        pool = [{"min_members": 1, "max_members": 10}]
+        pool = [{"min_members": 2, "max_members": 10}]
         history = [
             {
                 "location_id": "loc",
-                "filters": {"minMembers": 1, "maxMembers": 10},
+                "filters": {"minMembers": 2, "maxMembers": 10},
                 "used_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
             }
         ]
@@ -136,3 +136,24 @@ class TestSearchConfig(unittest.TestCase):
             "loc", history, pool, max_searches=5, cooldown_minutes=100000
         )
         self.assertEqual(len(selected), 0)
+
+    # --- New tests for API minimum values ---
+    def test_generated_level_range_starts_at_two(self):
+        configs = generate_search_configurations()
+        for cfg in configs:
+            if "min_clan_level" in cfg:
+                self.assertGreaterEqual(
+                    cfg["min_clan_level"],
+                    2,
+                    f"Config with min_clan_level below minimum: {cfg}",
+                )
+
+    def test_generated_points_range_starts_at_one(self):
+        configs = generate_search_configurations()
+        for cfg in configs:
+            if "min_clan_points" in cfg:
+                self.assertGreaterEqual(
+                    cfg["min_clan_points"],
+                    1,
+                    f"Config with min_clan_points below minimum: {cfg}",
+                )

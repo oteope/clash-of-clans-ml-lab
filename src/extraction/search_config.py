@@ -47,8 +47,10 @@ def generate_search_configurations() -> list[dict]:
 
     Only pairwise combinations are generated to keep the pool manageable.
     """
-    # The Clash of Clans API requires minMembers >= 2,
-    # therefore the first band starts at 2 instead of 1.
+    # The Clash of Clans API enforces the following minima:
+    #   minMembers >= 2
+    #   minClanLevel >= 2
+    #   minClanPoints >= 1
     member_ranges = [
         {"min_members": 2, "max_members": 10},
         {"min_members": 11, "max_members": 20},
@@ -57,13 +59,13 @@ def generate_search_configurations() -> list[dict]:
         {"min_members": 41, "max_members": 50},
     ]
     level_ranges = [
-        {"min_clan_level": 1, "max_clan_level": 5},
+        {"min_clan_level": 2, "max_clan_level": 5},
         {"min_clan_level": 6, "max_clan_level": 10},
         {"min_clan_level": 11, "max_clan_level": 15},
         {"min_clan_level": 16, "max_clan_level": 20},
     ]
     points_ranges = [
-        {"min_clan_points": 0, "max_clan_points": 1000},
+        {"min_clan_points": 1, "max_clan_points": 1000},
         {"min_clan_points": 1001, "max_clan_points": 3000},
         {"min_clan_points": 3001, "max_clan_points": 5000},
         {"min_clan_points": 5001, "max_clan_points": 10000},
