@@ -54,6 +54,7 @@ class TestNormalizationFunctions(unittest.TestCase):
             "townHallLevel": 14,
             "trophies": 3200,
             "league": {"id": 1, "name": "Bronze"},
+            "leagueTier": {"id": 8, "name": "Crystal"},
         }
         row = normalize_member(member, "#CLAN123")
         self.assertEqual(row["clan_tag"], "#CLAN123")
@@ -61,11 +62,14 @@ class TestNormalizationFunctions(unittest.TestCase):
         self.assertEqual(row["town_hall_level"], 14)
         self.assertEqual(row["league_id"], 1)
         self.assertEqual(row["league_name"], "Bronze")
+        self.assertEqual(row["league_tier_id"], 8)
+        self.assertEqual(row["league_tier_name"], "Crystal")
 
     def test_normalize_member_missing_league(self):
         member = {"tag": "#P", "trophies": 1000}
         row = normalize_member(member, "#C")
         self.assertIsNone(row["league_id"])
+        self.assertIsNone(row["league_tier_id"])
 
     # ------------------------------------------------------------------
     # Player
@@ -118,6 +122,7 @@ class TestNormalizationFunctions(unittest.TestCase):
         rows = normalize_hero_equipment("#P1", eq)
         self.assertEqual(len(rows), 1)
         self.assertEqual(rows[0]["equipment_name"], "Vampstache")
+        self.assertNotIn("hero_name", rows[0])
 
     # ------------------------------------------------------------------
     # Spells

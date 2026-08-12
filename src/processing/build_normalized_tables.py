@@ -4,12 +4,64 @@ import pathlib
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 logger = logging.getLogger(__name__)
 
 RAW_BASE = pathlib.Path("data/raw")
 PROCESSED_BASE = pathlib.Path("data/processed")
 
+CHUNK_SIZE = 10_000  # Number of rows collected in memory before writing a Parquet batch
+
+
+class _ParquetBatchWriter:
+    """Writes incremental batches to a single Parquet file using pyarrow.
+
+    The schema is determined by the first batch that actually writes rows.
+    Subsequent batches are aligned to this schema (missing columns filled with
+    ``None`` and extra columns ignored).
+    """
+
+    def __init__(self, path: pathlib.Path) -> None:
+        self.path = path
+        self.writer: Optional[pq.ParquetWriter] = None
+        self.schema: Optional[pa.Schema] = None
+        self.columns: Optional[List[str]] = None
+
+    def write_batch(self, rows: List[dict]) -> None:
+        if not rows:
+            return
+
+        df = pd.DataFrame(rows)
+
+        if self.writer is None:
+            # First write – open writer and lock schema
+            table = pa.Table.from_pandas(df)
+            self.schema = table.schema
+            self.columns = self.schema.names
+            self.writer = pq.ParquetWriter(self.path, self.schema)
+            self.writer.write_table(table)
+            return
+
+        # Subsequent writes – align columns to the frozen schema
+        for col in self.columns:
+            if col not in df.columns:
+                df[col] = None
+        df = df[self.columns]
+        table = pa.Table.from_pandas(df)
+        self.writer.write_table(table)
+
+    def close(self) -> None:
+        if self.writer is not None:
+            self.writer.close()
+            self.writer = None
+
+
+# ----------------------------------------------------------------------
+# Normalisation helpers – each returns a dict (or list of dicts) with
+# snake_case keys and None for missing fields.
+# ----------------------------------------------------------------------
 
 def load_json(filepath: pathlib.Path) -> Optional[dict]:
     """Safely load a JSON file, returning None on failure."""
@@ -20,11 +72,6 @@ def load_json(filepath: pathlib.Path) -> Optional[dict]:
         logger.warning("Failed to load %s: %s", filepath, exc)
         return None
 
-
-# ----------------------------------------------------------------------
-# Normalisation helpers – each returns a dict (or list of dicts) with
-# snake_case keys and None for missing fields.
-# ----------------------------------------------------------------------
 
 def normalize_clan(raw: dict) -> dict:
     """Convert a raw clan overview JSON into a flat clan row."""
@@ -57,6 +104,7 @@ def normalize_clan(raw: dict) -> dict:
 def normalize_member(member: dict, clan_tag: str) -> dict:
     """Convert a single member entry (from /clans/{tag}/members) into a row."""
     league = member.get("league") or {}
+    league_tier = member.get("leagueTier") or {}
     return {
         "clan_tag": clan_tag,
         "player_tag": member.get("tag"),
@@ -66,8 +114,8 @@ def normalize_member(member: dict, clan_tag: str) -> dict:
         "exp_level": member.get("expLevel"),
         "league_id": league.get("id"),
         "league_name": league.get("name"),
-        "league_tier_id": league.get("tierId"),
-        "league_tier_name": league.get("tierName"),
+        "league_tier_id": league_tier.get("id"),
+        "league_tier_name": league_tier.get("name"),
         "trophies": member.get("trophies"),
         "builder_base_trophies": member.get("builderBaseTrophies"),
         "clan_rank": member.get("clanRank"),
@@ -183,7 +231,7 @@ def normalize_achievements(player_tag: str, achievements: Optional[list]) -> lis
 
 
 # ----------------------------------------------------------------------
-# Deduplication helper
+# Deduplication helper (kept for testing / future use)
 # ----------------------------------------------------------------------
 
 def _deduplicate_dataframe(df: pd.DataFrame, keys: list) -> pd.DataFrame:
@@ -192,11 +240,15 @@ def _deduplicate_dataframe(df: pd.DataFrame, keys: list) -> pd.DataFrame:
 
 
 # ----------------------------------------------------------------------
-# Main pipeline entry-point
+# Main pipeline entry-point  (batch / streaming version)
 # ----------------------------------------------------------------------
 
 def build_all_tables() -> None:
-    """Process all raw JSON files and write normalized Parquet tables."""
+    """Process all raw JSON files and write normalized Parquet tables.
+
+    Data is processed in chunks to keep memory usage bounded even when
+    there are millions of raw records.
+    """
     logger.info("Starting normalized table build...")
     PROCESSED_BASE.mkdir(parents=True, exist_ok=True)
 
@@ -204,8 +256,9 @@ def build_all_tables() -> None:
     # 1. Clans
     # ------------------------------------------------------------------
     clans_dir = RAW_BASE / "clans"
-    clan_rows: list = []
+    clan_rows: List[dict] = []
     clan_tags_seen: Set[str] = set()
+    clan_writer = _ParquetBatchWriter(PROCESSED_BASE / "clans.parquet")
 
     if clans_dir.exists():
         for fpath in sorted(clans_dir.glob("*.json")):
@@ -213,31 +266,35 @@ def build_all_tables() -> None:
             if raw is None:
                 continue
             row = normalize_clan(raw)
-            tag = row["clan_tag"]
-            if tag and tag not in clan_tags_seen:
-                clan_tags_seen.add(tag)
-                clan_rows.append(row)
-            else:
+            tag = row.get("clan_tag")
+            if not tag or tag in clan_tags_seen:
                 logger.debug("Skipping duplicate clan tag %s", tag)
+                continue
+            clan_tags_seen.add(tag)
+            clan_rows.append(row)
+            if len(clan_rows) >= CHUNK_SIZE:
+                clan_writer.write_batch(clan_rows)
+                clan_rows.clear()
 
-    if clan_rows:
-        df_clans = pd.DataFrame(clan_rows)
-        df_clans = _deduplicate_dataframe(df_clans, ["clan_tag"])
-        df_clans.to_parquet(PROCESSED_BASE / "clans.parquet", index=False)
-        logger.info("Written %d clans.", len(df_clans))
+        # flush remaining
+        clan_writer.write_batch(clan_rows)
+        clan_writer.close()
+        logger.info("Written %d clans.", len(clan_tags_seen))
     else:
         logger.info("No clan data found.")
+        clan_writer.close()
 
     # ------------------------------------------------------------------
     # 2. Clan members (relationship table)
     # ------------------------------------------------------------------
     members_dir = RAW_BASE / "members"
-    member_rows: list = []
+    member_rows: List[dict] = []
     member_keys: Set[Tuple[str, str]] = set()
+    member_writer = _ParquetBatchWriter(PROCESSED_BASE / "clan_members.parquet")
 
     if members_dir.exists():
         for fpath in sorted(members_dir.glob("*.json")):
-            clan_tag = fpath.stem   # filename without extension
+            clan_tag = fpath.stem   # file name without extension
             raw = load_json(fpath)
             if raw is None:
                 continue
@@ -247,30 +304,40 @@ def build_all_tables() -> None:
                 if not player_tag:
                     continue
                 key = (clan_tag, player_tag)
-                if key not in member_keys:
-                    member_keys.add(key)
-                    member_rows.append(normalize_member(member, clan_tag))
+                if key in member_keys:
+                    continue
+                member_keys.add(key)
+                member_rows.append(normalize_member(member, clan_tag))
+                if len(member_rows) >= CHUNK_SIZE:
+                    member_writer.write_batch(member_rows)
+                    member_rows.clear()
 
-    if member_rows:
-        df_members = pd.DataFrame(member_rows)
-        df_members = _deduplicate_dataframe(df_members, ["clan_tag", "player_tag"])
-        df_members.to_parquet(PROCESSED_BASE / "clan_members.parquet", index=False)
-        logger.info("Written %d clan-member relationships.", len(df_members))
+        member_writer.write_batch(member_rows)
+        member_writer.close()
+        logger.info("Written %d clan-member relationships.", len(member_keys))
     else:
         logger.info("No members data found.")
+        member_writer.close()
 
     # ------------------------------------------------------------------
     # 3. Players + nested lists
     # ------------------------------------------------------------------
     players_dir = RAW_BASE / "players"
-    player_rows: list = []
+    player_rows: List[dict] = []
     player_tags_seen: Set[str] = set()
+    player_writer = _ParquetBatchWriter(PROCESSED_BASE / "players.parquet")
 
-    troops_rows: list = []
-    heroes_rows: list = []
-    equipment_rows: list = []
-    spells_rows: list = []
-    achievements_rows: list = []
+    troops_rows: List[dict] = []
+    heroes_rows: List[dict] = []
+    equipment_rows: List[dict] = []
+    spells_rows: List[dict] = []
+    achievements_rows: List[dict] = []
+
+    troops_writer = _ParquetBatchWriter(PROCESSED_BASE / "player_troops.parquet")
+    heroes_writer = _ParquetBatchWriter(PROCESSED_BASE / "player_heroes.parquet")
+    equipment_writer = _ParquetBatchWriter(PROCESSED_BASE / "player_hero_equipment.parquet")
+    spells_writer = _ParquetBatchWriter(PROCESSED_BASE / "player_spells.parquet")
+    achievements_writer = _ParquetBatchWriter(PROCESSED_BASE / "player_achievements.parquet")
 
     if players_dir.exists():
         for fpath in sorted(players_dir.glob("*.json")):
@@ -285,42 +352,70 @@ def build_all_tables() -> None:
 
             player_tags_seen.add(tag)
             player_rows.append(row)
+            if len(player_rows) >= CHUNK_SIZE:
+                player_writer.write_batch(player_rows)
+                player_rows.clear()
 
-            troops_rows.extend(normalize_troops(tag, raw.get("troops")))
-            heroes_rows.extend(normalize_heroes(tag, raw.get("heroes")))
+            # nested lists – accumulate and flush per table
+            new_troops = normalize_troops(tag, raw.get("troops"))
+            troops_rows.extend(new_troops)
+            if len(troops_rows) >= CHUNK_SIZE:
+                troops_writer.write_batch(troops_rows)
+                troops_rows.clear()
 
-            # The player JSON may store hero equipment under "heroEquipment" or "equipment".
-            eq_list = raw.get("heroEquipment") or raw.get("equipment")
-            equipment_rows.extend(normalize_hero_equipment(tag, eq_list))
+            new_heroes = normalize_heroes(tag, raw.get("heroes"))
+            heroes_rows.extend(new_heroes)
+            if len(heroes_rows) >= CHUNK_SIZE:
+                heroes_writer.write_batch(heroes_rows)
+                heroes_rows.clear()
 
-            spells_rows.extend(normalize_spells(tag, raw.get("spells")))
-            achievements_rows.extend(normalize_achievements(tag, raw.get("achievements")))
+            eq_list = raw.get("heroEquipment")   # only the real field
+            new_equipment = normalize_hero_equipment(tag, eq_list)
+            equipment_rows.extend(new_equipment)
+            if len(equipment_rows) >= CHUNK_SIZE:
+                equipment_writer.write_batch(equipment_rows)
+                equipment_rows.clear()
 
-    if player_rows:
-        df_players = pd.DataFrame(player_rows)
-        df_players = _deduplicate_dataframe(df_players, ["player_tag"])
-        df_players.to_parquet(PROCESSED_BASE / "players.parquet", index=False)
-        logger.info("Written %d players.", len(df_players))
+            new_spells = normalize_spells(tag, raw.get("spells"))
+            spells_rows.extend(new_spells)
+            if len(spells_rows) >= CHUNK_SIZE:
+                spells_writer.write_batch(spells_rows)
+                spells_rows.clear()
+
+            new_ach = normalize_achievements(tag, raw.get("achievements"))
+            achievements_rows.extend(new_ach)
+            if len(achievements_rows) >= CHUNK_SIZE:
+                achievements_writer.write_batch(achievements_rows)
+                achievements_rows.clear()
+
+        # flush remaining for all player-related tables
+        player_writer.write_batch(player_rows)
+        player_writer.close()
+
+        troops_writer.write_batch(troops_rows)
+        troops_writer.close()
+
+        heroes_writer.write_batch(heroes_rows)
+        heroes_writer.close()
+
+        equipment_writer.write_batch(equipment_rows)
+        equipment_writer.close()
+
+        spells_writer.write_batch(spells_rows)
+        spells_writer.close()
+
+        achievements_writer.write_batch(achievements_rows)
+        achievements_writer.close()
+
+        logger.info("Written %d players.", len(player_tags_seen))
     else:
         logger.info("No player data found.")
-
-    # Helper to write and dedup nested tables
-    def _write_nested(rows: list, filename: str, keys: list) -> None:
-        if not rows:
-            logger.info("No data for %s.", filename)
-            return
-        df = pd.DataFrame(rows)
-        df = _deduplicate_dataframe(df, keys)
-        df.to_parquet(PROCESSED_BASE / filename, index=False)
-        logger.info("Written %d rows to %s.", len(df), filename)
-
-    _write_nested(troops_rows, "player_troops.parquet", ["player_tag", "troop_name", "village"])
-    _write_nested(heroes_rows, "player_heroes.parquet", ["player_tag", "hero_name", "village"])
-    _write_nested(equipment_rows, "player_hero_equipment.parquet",
-                  ["player_tag", "equipment_name", "village"])
-    _write_nested(spells_rows, "player_spells.parquet", ["player_tag", "spell_name", "village"])
-    _write_nested(achievements_rows, "player_achievements.parquet",
-                  ["player_tag", "achievement_name"])
+        player_writer.close()
+        troops_writer.close()
+        heroes_writer.close()
+        equipment_writer.close()
+        spells_writer.close()
+        achievements_writer.close()
 
     logger.info("Normalized table build complete.")
 
