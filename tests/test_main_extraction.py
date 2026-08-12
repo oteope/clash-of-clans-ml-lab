@@ -21,12 +21,14 @@ class TestMainExtraction(unittest.TestCase):
         self.client.search_clans.return_value = returned_clans
 
         history = []
+        all_new_seed: set[str] = set()
         tags, results, new = asyncio.run(
             _perform_search(
                 client=self.client,
                 loc_id="locA",
                 cfg={"min_members": 1},
                 search_history=history,
+                all_new_seed=all_new_seed,
             )
         )
         # basic checks on returned values
@@ -46,12 +48,14 @@ class TestMainExtraction(unittest.TestCase):
         self.client.search_clans.side_effect = Exception("API down")
 
         history = []
+        all_new_seed: set[str] = set()
         tags, results, new = asyncio.run(
             _perform_search(
                 client=self.client,
                 loc_id="locB",
                 cfg={"min_members": 2},
                 search_history=history,
+                all_new_seed=all_new_seed,
             )
         )
         self.assertEqual(tags, set())

@@ -178,6 +178,60 @@ async def _search_clans(client: CoCClient,
     return await client.search_clans(location_id=location_id, **cfg)
 
 
+async def _perform_search(
+    client: CoCClient,
+    loc_id: str | None,
+    cfg: dict,
+    search_history: list,
+    all_new_seed: set[str],
+) -> tuple[set[str], int, int]:
+    """
+    Execute one diversified search and update *search_history* and *all_new_seed*.
+
+    Returns (all_tags, result_count, genuinely_new_count).
+    On error the history is NOT modified and an empty tuple is returned.
+    """
+    # Build a logging label for this location
+    loc_label = loc_id if loc_id is not None else "global"
+
+    try:
+        clans = await _search_clans(client, loc_id, cfg)
+    except Exception as exc:
+        logger.error(
+            "Search failed for location %s with filters %s: %s",
+            loc_label,
+            cfg,
+            exc,
+        )
+        return set(), 0, 0
+
+    tags = {entry.get("tag") for entry in clans if entry.get("tag")}
+    results = len(clans)
+
+    genuinely_new = {
+        tag for tag in tags
+        if not _raw_file_exists("clans", tag) and tag not in all_new_seed
+    }
+    all_new_seed.update(genuinely_new)
+
+    entry = {
+        "location_id": loc_label,
+        "filters": cfg,
+        "used_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "results": results,
+        "new_clans": len(genuinely_new),
+    }
+    search_history.append(entry)
+
+    logger.info(
+        "Search completed: %d results, %d new clans.",
+        results,
+        len(genuinely_new),
+    )
+
+    return tags, results, len(genuinely_new)
+
+
 # ---------------------------------------------------------------------------
 # Location ID resolution
 # ---------------------------------------------------------------------------
@@ -278,42 +332,8 @@ async def main() -> None:
 
             for cfg in selected:
                 logger.info("  - filters: %s", cfg)
-                try:
-                    clans = await _search_clans(client, loc_id, cfg)
-                except Exception as exc:
-                    logger.error(
-                        "Search failed for location %s with filters %s: %s",
-                        record_loc,
-                        cfg,
-                        exc,
-                    )
-                    continue
-
-                tags = {entry.get("tag") for entry in clans if entry.get("tag")}
-                results = len(clans)
-
-                # Only count clans that are genuinely new **and** haven't been discovered
-                # by an earlier search in this same run.
-                genuinely_new = {
-                    tag for tag in tags
-                    if not _raw_file_exists("clans", tag) and tag not in all_new_seed
-                }
-                all_new_seed.update(genuinely_new)
-
-                entry = {
-                    "location_id": record_loc,
-                    "filters": cfg,
-                    "used_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-                    "results": results,
-                    "new_clans": len(genuinely_new),
-                }
-                search_history.append(entry)
-
-                logger.info(
-                    "Search completed: %d results, %d new clans.",
-                    results,
-                    len(genuinely_new),
-                )
+                # The helper handles all logic (API call, dedup, history).
+                await _perform_search(client, loc_id, cfg, search_history, all_new_seed)
 
         # 4. Persist the updated history
         save_search_history(search_history)
