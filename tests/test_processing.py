@@ -227,8 +227,9 @@ class TestParquetBatchWriter(unittest.TestCase):
             self.assertEqual(table.schema.names, ["a", "b", "c"])
             df = table.to_pandas()
             self.assertEqual(len(df), 2)
-            self.assertIsNone(df.loc[0, "c"])
+            self.assertTrue(pd.isna(df.loc[0, "c"]))
             self.assertEqual(df.loc[1, "c"], "z")
+            self.assertNotIn("d", df.columns)
 
 
 class TestBuildAllTablesIntegration(unittest.TestCase):
@@ -360,7 +361,6 @@ class TestBuildAllTablesIntegration(unittest.TestCase):
         self.assertEqual(len(achievements), 1)
 
     def test_build_reproducible_no_duplicates(self):
-        # Datos mínimos: un clan, un member, un player
         self._write_json("clans", "#CLAN1.json", {
             "tag": "#CLAN1",
             "name": "Clan A",
@@ -419,7 +419,6 @@ class TestBuildAllTablesIntegration(unittest.TestCase):
         self.assertEqual(players.loc[0, "player_tag"], "#GOOD")
 
     def test_dedup_nested_entities(self):
-        # Player con tropas duplicadas (misma clave player_tag, troop_name, village)
         self._write_json("players", "#P1.json", {
             "tag": "#P1",
             "name": "Player",
@@ -438,17 +437,16 @@ class TestBuildAllTablesIntegration(unittest.TestCase):
         build_all_tables(raw_base=self.raw_base, processed_base=self.processed_base)
 
         troops = self._read_parquet("player_troops.parquet")
-        self.assertEqual(len(troops), 2)  # Barbarian dedup, Archer queda
+        self.assertEqual(len(troops), 2)
         barbarian = troops[troops["troop_name"] == "Barbarian"]
         self.assertEqual(len(barbarian), 1)
-        self.assertEqual(barbarian.iloc[0]["level"], 8)  # se conserva la primera aparición
+        self.assertEqual(barbarian.iloc[0]["level"], 8)
 
         heroes = self._read_parquet("player_heroes.parquet")
         self.assertEqual(len(heroes), 1)
         self.assertEqual(heroes.loc[0, "hero_name"], "Barbarian King")
 
     def test_no_relations_discarded(self):
-        # Member con player_tag que no existe en players
         self._write_json("clans", "#CLAN1.json", {
             "tag": "#CLAN1",
             "name": "Clan A",

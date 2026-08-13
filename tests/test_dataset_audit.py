@@ -16,7 +16,6 @@ class TestDatasetAudit(unittest.TestCase):
         self.base = Path(self.temp_dir.name)
         self.raw = self.base / "data" / "raw"
         self.raw.mkdir(parents=True, exist_ok=True)
-        # Create subdirectories
         (self.raw / "players").mkdir(exist_ok=True)
         (self.raw / "clans").mkdir(exist_ok=True)
         (self.raw / "members").mkdir(exist_ok=True)
@@ -51,7 +50,6 @@ class TestDatasetAudit(unittest.TestCase):
         report = run_audit(self.raw)
         th_dist = report["players"]["distributions"]["townHallLevel"]
         self.assertEqual(th_dist["observed_categories"], 2)
-        # Counts: 5 -> 2, 10 -> 1
         self.assertEqual(th_dist["distribution"][0]["value"], "5")
         self.assertEqual(th_dist["distribution"][0]["count"], 2)
 
@@ -71,19 +69,30 @@ class TestDatasetAudit(unittest.TestCase):
         report = run_audit(self.raw)
         loc_dist = report["clans"]["distributions"]["location"]
         self.assertEqual(loc_dist["observed_categories"], 2)
-        # Dominant: Europe (2 records)
         self.assertEqual(loc_dist["dominant"], "32000000|Europe")
         self.assertAlmostEqual(loc_dist["dominant_percentage"], 66.666, places=2)
 
     def test_players_per_clan_and_concentration(self):
-        # Create three clans and members. Each member file must contain clan info.
-        # We'll create files that include 'clan' field.
-        self._write_json("members", "m1.json", {"tag": "#P1", "clan": {"tag": "#C1"}})
-        self._write_json("members", "m2.json", {"tag": "#P2", "clan": {"tag": "#C1"}})
-        self._write_json("members", "m3.json", {"tag": "#P3", "clan": {"tag": "#C2"}})
-        self._write_json("members", "m4.json", {"tag": "#P4", "clan": {"tag": "#C2"}})
-        self._write_json("members", "m5.json", {"tag": "#P5", "clan": {"tag": "#C2"}})
-        self._write_json("members", "m6.json", {"tag": "#P6", "clan": {"tag": "#C3"}})
+        # Estructura real de data/raw/members/<CLAN_TAG>.json
+        self._write_json("members", "#C1.json", {
+            "items": [
+                {"tag": "#P1"},
+                {"tag": "#P2"}
+            ]
+        })
+        self._write_json("members", "#C2.json", {
+            "items": [
+                {"tag": "#P3"},
+                {"tag": "#P4"},
+                {"tag": "#P5"}
+            ]
+        })
+        self._write_json("members", "#C3.json", {
+            "items": [
+                {"tag": "#P6"}
+            ]
+        })
+
         report = run_audit(self.raw)
         member_stats = report["members"]["stats"]
         # Total relationships = 6
@@ -112,7 +121,6 @@ class TestDatasetAudit(unittest.TestCase):
         self.assertEqual(trophies["min"], 1000.0)
         self.assertEqual(trophies["max"], 3000.0)
         self.assertAlmostEqual(trophies["mean"], 2000.0)
-        # Std deviation of 1000,2000,3000 is 1000 (sample variance)
         self.assertAlmostEqual(trophies["std"], 1000.0, places=2)
 
     def test_missing_fields(self):
@@ -120,12 +128,10 @@ class TestDatasetAudit(unittest.TestCase):
         self._write_json("players", "p2.json", {"tag": "#P2"})
         report = run_audit(self.raw)
         missing = report["players"]["missing_fields"]
-        self.assertEqual(missing["townHallLevel"], 1)  # only p2 missing
-        # total players 2
+        self.assertEqual(missing["townHallLevel"], 1)
         self.assertEqual(report["players"]["total"], 2)
 
     def test_concentration_warning(self):
-        # Highly concentrated town hall: 9 players with TH 10, 1 with TH 5
         for i in range(9):
             self._write_json("players", f"p{i}.json", {"tag": f"#P{i}", "townHallLevel": 10})
         self._write_json("players", "p9.json", {"tag": "#P9", "townHallLevel": 5})
@@ -153,18 +159,16 @@ class TestDatasetAudit(unittest.TestCase):
         self.assertEqual(report["players"]["total"], 0)
         self.assertEqual(report["clans"]["total"], 0)
         self.assertEqual(report["members"]["total_relationships"], 0)
-        # Should not crash and can generate reports
         md = generate_markdown_report(report)
         self.assertIn("Limited coverage", md)
 
     def test_corrupt_json(self):
-        # Create a corrupt JSON file
         path = self.raw / "players" / "bad.json"
         with open(path, "w", encoding="utf-8") as f:
             f.write("{not valid json")
         report = run_audit(self.raw)
         self.assertGreaterEqual(report["files"]["players_corrupt"], 1)
-        self.assertEqual(report["players"]["total"], 0)  # no valid player loaded
+        self.assertEqual(report["players"]["total"], 0)
 
 
 if __name__ == "__main__":
