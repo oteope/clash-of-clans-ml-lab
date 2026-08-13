@@ -181,6 +181,18 @@ def load_json_file(path: Path) -> Optional[Any]:
         return None
 
 
+def _normalize_tag(tag: Any) -> Optional[str]:
+    """Normalize a Clash of Clans tag to ensure it starts with '#'."""
+    if tag is None:
+        return None
+    tag = str(tag).strip()
+    if not tag:
+        return None
+    if not tag.startswith("#"):
+        tag = "#" + tag
+    return tag
+
+
 def _extract_clan_tag_from_member(member: Dict[str, Any], filename: str) -> Optional[str]:
     """Try to infer the clan tag from a member record.
 
@@ -242,6 +254,9 @@ def run_audit(raw_data_dir: Path) -> Dict[str, Any]:
             "unique_clans_represented": 0,
             "unique_players_represented": 0,
             "missing_clan_tag": 0,
+            "members_without_tag": 0,
+            "valid_files": 0,
+            "files_without_items": 0,
             "clan_sizes": [],
         },
         "warnings": [],
@@ -424,58 +439,55 @@ def run_audit(raw_data_dir: Path) -> Dict[str, Any]:
 
     # ---------- Process members ----------
     if members_dir.exists():
+        clan_size_counter: Dict[str, int] = {}
         for file_path in members_dir.glob("*.json"):
             result["files"]["members_read"] += 1
             data = load_json_file(file_path)
             if data is None:
                 result["files"]["members_corrupt"] += 1
                 continue
+
+            # Tag del clan se toma siempre del nombre del archivo.
+            clan_tag = _normalize_tag(file_path.stem)
+            if clan_tag is None:
+                result["members"]["missing_clan_tag"] += 1
+                continue
+
+            # Determinar la lista de miembros.
+            items = []
             if isinstance(data, dict):
-                member_objs = [data]
-            elif isinstance(data, list):
-                member_objs = [d for d in data if isinstance(d, dict)]
+                if isinstance(data.get("items"), list):
+                    items = data["items"]
+                    if len(items) == 0:
+                        result["members"]["files_without_items"] += 1
+                    else:
+                        result["members"]["valid_files"] += 1
+                elif "tag" in data:
+                    # Compatibilidad con formato anterior de un solo objeto.
+                    items = [data]
+                    result["members"]["valid_files"] += 1
+                else:
+                    result["members"]["files_without_items"] += 1
+            elif isinstance(data, list) and data:
+                items = data
+                result["members"]["valid_files"] += 1
             else:
-                member_objs = []
+                result["members"]["files_without_items"] += 1
 
-            for member in member_objs:
-                result["members"]["total_relationships"] += 1
-                player_tag = member.get("tag")
-                if player_tag is not None:
-                    member_player_tags.add(str(player_tag))
-                clan_tag = _extract_clan_tag_from_member(member, file_path.name)
-                if clan_tag is not None:
-                    member_clan_tags.add(clan_tag)
-                else:
-                    result["members"]["missing_clan_tag"] += 1
-
-        # Compute clan sizes from member_clan_tags? Actually we need per-clan count.
-        # For exact sizes, we would need a separate pass or store mapping.
-        # Since members files don't store clan tag reliably, we use member_clan_tags as unique clans only.
-        # For concentration, we need sizes. We'll compute sizes by counting in a second pass over members?
-        # Better: today's implementation already processed files; we can do a second pass to collect sizes.
-        # However to avoid complexity, we can use a dict here if we process again.
-        # But for simplicity, we will perform a second pass to count members per clan.
-        # This is acceptable in streaming because we only load one file at a time.
-        if member_clan_tags:
-            # Count sizes by reading again (still streaming)
-            clan_size_counter: Dict[str, int] = {}
-            for file_path in members_dir.glob("*.json"):
-                data = load_json_file(file_path)
-                if data is None:
+            for member in items:
+                if not isinstance(member, dict):
                     continue
-                if isinstance(data, dict):
-                    member_objs = [data]
-                elif isinstance(data, list):
-                    member_objs = [d for d in data if isinstance(d, dict)]
-                else:
-                    member_objs = []
-                for member in member_objs:
-                    clan_tag = _extract_clan_tag_from_member(member, file_path.name)
-                    if clan_tag is not None:
-                        clan_size_counter[clan_tag] = clan_size_counter.get(clan_tag, 0) + 1
-            clan_sizes = list(clan_size_counter.values())
-            # Also update unique clans represented based on actual sizes
-            member_clan_tags = set(clan_size_counter.keys())
+                player_tag = _normalize_tag(member.get("tag"))
+                if player_tag is None:
+                    result["members"]["members_without_tag"] += 1
+                    continue
+
+                result["members"]["total_relationships"] += 1
+                member_player_tags.add(player_tag)
+                member_clan_tags.add(clan_tag)
+                clan_size_counter[clan_tag] = clan_size_counter.get(clan_tag, 0) + 1
+
+        clan_sizes = list(clan_size_counter.values())
 
     result["members"]["unique_clans_represented"] = len(member_clan_tags)
     result["members"]["unique_players_represented"] = len(member_player_tags)
@@ -485,23 +497,25 @@ def run_audit(raw_data_dir: Path) -> Dict[str, Any]:
     total_members = result["members"]["total_relationships"]
     unique_clans = len(clan_sizes)
     if unique_clans > 0:
-        total_players_in_members = sum(clan_sizes)
+        total_players_in_members = sum(clan_sizes)  # should equal total_members
         avg_per_clan = total_members / unique_clans
         sorted_sizes = sorted(clan_sizes)
         median_per_clan = _percentile(sorted_sizes, 50.0)
         min_per_clan = sorted_sizes[0]
         max_per_clan = sorted_sizes[-1]
+        largest_clan_size = max_per_clan
         top_concentration = {}
         top_ns = [1, 10, 50, 100]
         for n in top_ns:
             if n > 0:
                 top_sum = sum(sorted_sizes[-n:]) if n <= len(sorted_sizes) else sum(sorted_sizes)
-                top_concentration[f"top_{n}"] = (top_sum / total_players_in_members * 100.0) if total_players_in_members else 0.0
+                top_concentration[f"top_{n}"] = (top_sum / total_members * 100.0) if total_members else 0.0
         result["members"]["stats"] = {
             "average_players_per_clan": avg_per_clan,
             "median_players_per_clan": median_per_clan,
             "min_players_per_clan": min_per_clan,
             "max_players_per_clan": max_per_clan,
+            "largest_clan_size": largest_clan_size,
             "concentration_percentages": top_concentration,
         }
     else:
@@ -510,6 +524,7 @@ def run_audit(raw_data_dir: Path) -> Dict[str, Any]:
             "median_players_per_clan": None,
             "min_players_per_clan": None,
             "max_players_per_clan": None,
+            "largest_clan_size": None,
             "concentration_percentages": {},
         }
 
@@ -705,6 +720,7 @@ def generate_markdown_report(report: Dict[str, Any]) -> str:
     lines.append(f"- Median players per clan: {member_stats.get('median_players_per_clan', 'N/A')}")
     lines.append(f"- Min players per clan: {member_stats.get('min_players_per_clan', 'N/A')}")
     lines.append(f"- Max players per clan: {member_stats.get('max_players_per_clan', 'N/A')}")
+    lines.append(f"- Players in largest clan: {member_stats.get('largest_clan_size', 'N/A')}")
     conc = member_stats.get("concentration_percentages", {})
     for k, v in conc.items():
         label = k.replace('_', ' ')
@@ -733,7 +749,10 @@ def generate_markdown_report(report: Dict[str, Any]) -> str:
     else:
         lines.append("No clans.")
     lines.append("")
-    lines.append(f"- Members missing clan tag: {members['missing_clan_tag']}")
+    lines.append(f"- Members missing clan tag: {members.get('missing_clan_tag', 0)}")
+    lines.append(f"- Members without player tag: {members.get('members_without_tag', 0)}")
+    lines.append(f"- Valid member files: {members.get('valid_files', 0)}")
+    lines.append(f"- Member files without items: {members.get('files_without_items', 0)}")
 
     # Diversity indicators
     lines.append("\n## Diversity indicators\n")
