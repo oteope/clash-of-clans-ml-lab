@@ -228,8 +228,9 @@ def build_player_features(
 
     # Rellenar valores nulos numéricos con 0
     for col in result.columns:
-        if col != "player_tag" and np.issubdtype(result[col].dtype, np.number):
-            result[col] = result[col].fillna(0)
+        if col == "player_tag":
+            continue
+        result[col] = pd.to_numeric(result[col], errors="coerce").fillna(0)
 
     return result
 
@@ -321,9 +322,10 @@ def build_player_features_from_files(
         achievements_agg, left_on="player_tag", right_index=True, how="left"
     )
 
-    # Rellenar nulos numéricos con 0
+    # Rellenar valores nulos numéricos con 0
     for col in result.columns:
-        if col != "player_tag" and np.issubdtype(result[col].dtype, np.number):
-            result[col] = result[col].fillna(0)
+        if col == "player_tag":
+            continue
+        result[col] = pd.to_numeric(result[col], errors="coerce").fillna(0)
 
     return result
