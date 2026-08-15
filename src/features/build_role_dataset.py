@@ -3,7 +3,10 @@ from typing import Dict
 
 import pandas as pd
 
-from src.features.player_features import build_player_features
+from src.features.player_features import (
+    build_player_features,
+    build_player_features_from_files,
+)
 from src.features.player_clan_features import compute_clan_relative_features
 
 PROCESSED_DIR = Path("data/processed")
@@ -11,17 +14,12 @@ FEATURES_DIR = Path("data/features")
 DATASETS_DIR = Path("data/datasets")
 
 
-def load_processed_tables() -> Dict[str, pd.DataFrame]:
-    """Carga los Parquet procesados."""
+def load_small_tables() -> Dict[str, pd.DataFrame]:
+    """Carga las tablas compactas que caben en memoria."""
     return {
         "players": pd.read_parquet(PROCESSED_DIR / "players.parquet"),
         "clans": pd.read_parquet(PROCESSED_DIR / "clans.parquet"),
         "clan_members": pd.read_parquet(PROCESSED_DIR / "clan_members.parquet"),
-        "troops": pd.read_parquet(PROCESSED_DIR / "player_troops.parquet"),
-        "heroes": pd.read_parquet(PROCESSED_DIR / "player_heroes.parquet"),
-        "spells": pd.read_parquet(PROCESSED_DIR / "player_spells.parquet"),
-        "equipment": pd.read_parquet(PROCESSED_DIR / "player_hero_equipment.parquet"),
-        "achievements": pd.read_parquet(PROCESSED_DIR / "player_achievements.parquet"),
     }
 
 
@@ -58,6 +56,8 @@ def build_all_features(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Construye player_features y player_clan_features.
+
+    Esta versión recibe DataFrames completos y se mantiene para tests.
     """
     pf = build_player_features(
         players_df, troops_df, heroes_df, spells_df, equipment_df, achievements_df
@@ -99,17 +99,19 @@ def main() -> None:
     FEATURES_DIR.mkdir(parents=True, exist_ok=True)
     DATASETS_DIR.mkdir(parents=True, exist_ok=True)
 
-    tables = load_processed_tables()
+    # Cargar solo tablas compactas
+    small_tables = load_small_tables()
+    players_df = small_tables["players"]
+    clans_df = small_tables["clans"]
+    clan_members_df = small_tables["clan_members"]
 
-    pf, pcf = build_all_features(
-        clan_members_df=tables["clan_members"],
-        players_df=tables["players"],
-        troops_df=tables["troops"],
-        heroes_df=tables["heroes"],
-        spells_df=tables["spells"],
-        equipment_df=tables["equipment"],
-        achievements_df=tables["achievements"],
+    # Calcular player features mediante procesamiento por batches
+    pf = build_player_features_from_files(
+        PROCESSED_DIR, batch_size=100_000
     )
+
+    # Calcular player-clan features usando clan_members y player_features
+    pcf = compute_clan_relative_features(clan_members_df, pf)
 
     # Guardar features intermedias
     pf.to_parquet(FEATURES_DIR / "player_features.parquet", index=False)
@@ -119,10 +121,13 @@ def main() -> None:
     role_dataset = assemble_role_dataset(
         pf=pf,
         pcf=pcf,
-        clan_members_df=tables["clan_members"],
-        clans_df=tables["clans"],
+        clan_members_df=clan_members_df,
+        clans_df=clans_df,
     )
-    role_dataset.to_parquet(DATASETS_DIR / "role_classification.parquet", index=False)
+    role_dataset.to_parquet(
+        DATASETS_DIR / "role_classification.parquet",
+        index=False,
+    )
 
 
 if __name__ == "__main__":
