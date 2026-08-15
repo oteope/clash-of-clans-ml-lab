@@ -7,6 +7,7 @@ from src.features.problem2.build_clan_rank_dataset import (
     _merge_preserving_clan_values,
     build_clan_rank_features,
 )
+from src.features.problem2.clan_rank_analysis import audit_clan_rank_proxies
 
 
 def make_clan_members():
@@ -91,6 +92,9 @@ class TestProblem2Dataset(unittest.TestCase):
         self.clan_members = make_clan_members()
         self.player_features = make_player_features()
         self.clans = make_clans()
+        self.analysis = audit_clan_rank_proxies(
+            self.clan_members, self.player_features
+        )
         self.final = build_clan_rank_features(
             self.clan_members,
             self.player_features,
@@ -102,7 +106,6 @@ class TestProblem2Dataset(unittest.TestCase):
         self.assertFalse(self.final["clan_rank"].isna().any())
 
     def test_no_missing_target_unexpected(self):
-        # En el dataset de ejemplo no debe haber NaN en clan_rank
         self.assertEqual(self.final["clan_rank"].isna().sum(), 0)
 
     def test_granularity_one_row_per_player_clan(self):
@@ -122,24 +125,25 @@ class TestProblem2Dataset(unittest.TestCase):
     def test_previous_clan_rank_excluded(self):
         self.assertNotIn("previous_clan_rank", self.final.columns)
 
+    def test_role_not_in_features(self):
+        feature_cols = set(self.final.columns) - {"player_tag", "clan_tag", "clan_rank"}
+        self.assertNotIn("role", feature_cols)
+        self.assertNotIn("role", self.final.columns)
+
     def test_clan_rank_not_in_features(self):
         feature_cols = set(self.final.columns) - {"player_tag", "clan_tag", "clan_rank"}
-        self.assertTrue(feature_cols.isdisjoint({"clan_rank", "previous_clan_rank"}))
+        self.assertTrue(feature_cols.isdisjoint({"clan_rank", "previous_clan_rank", "role"}))
 
-    def test_relative_features_exist(self):
-        self.assertIn("trophies_diff_from_clan_mean", self.final.columns)
-        self.assertIn("trophies_ratio_to_clan_mean", self.final.columns)
-        self.assertIn("trophies_clan_pct", self.final.columns)
+    def test_relative_features_exist_for_safe_vars(self):
+        self.assertIn("exp_level_diff_from_clan_mean", self.final.columns)
+        self.assertIn("war_stars_ratio_to_clan_mean", self.final.columns)
 
     def test_no_row_multiplication(self):
-        # El número de filas debe ser exactamente el número de relaciones originales
         self.assertEqual(len(self.final), len(self.clan_members))
 
     def test_missing_player_profiles_are_dropped(self):
-        # Crear un clan_members con un jugador sin features
         cm = self.clan_members.copy()
-        cm = cm[cm["player_tag"] != "#P3"]  # elimina una relación existente
-        # Ahora añadir una relación extra con player_tag no existente
+        cm = cm[cm["player_tag"] != "#P3"]
         new_row = {
             "clan_tag": "#C2",
             "player_tag": "#PX",
@@ -157,13 +161,26 @@ class TestProblem2Dataset(unittest.TestCase):
         cm = pd.concat([cm, pd.DataFrame([new_row])], ignore_index=True)
         pf = self.player_features.copy()
         final = build_clan_rank_features(cm, pf, self.clans)
-        # La relación sin player features debe ser excluida
         self.assertNotIn("#PX", final["player_tag"].tolist())
         self.assertEqual(len(final), len(cm) - 1)
 
+    def test_trophies_are_audited(self):
+        trophies_row = self.analysis[self.analysis["variable"] == "trophies"].iloc[0]
+        self.assertIn(
+            trophies_row["classification"],
+            ["SAFE", "PROXY", "TOO_DIRECT", "EXCLUDE"],
+        )
+
+    def test_trophies_excluded_if_too_direct(self):
+        trophies_class = self.analysis[self.analysis["variable"] == "trophies"]["classification"].iloc[0]
+        feature_cols = set(self.final.columns) - {"player_tag", "clan_tag", "clan_rank"}
+        if trophies_class in {"TOO_DIRECT", "EXCLUDE"}:
+            self.assertNotIn("trophies", feature_cols)
+            self.assertNotIn("trophies_diff_from_clan_mean", feature_cols)
+            self.assertNotIn("trophies_clan_pct", feature_cols)
+
     def test_merge_preserving_clan_values(self):
         merged = _merge_preserving_clan_values(self.clan_members, self.player_features)
-        # La columna 'trophies' debe provenir de clan_members, no de player_features
         for _, row in merged.iterrows():
             self.assertIn(row["trophies"], [2500, 3000, 3500, 2800])
 
