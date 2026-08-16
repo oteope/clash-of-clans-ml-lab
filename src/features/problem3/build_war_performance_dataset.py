@@ -14,15 +14,16 @@ DATASETS_DIR_DEFAULT = Path("data/datasets")
 # ---------------------------------------------------------------------------
 # Umbral mínimo de historial bélico
 #
-# Este valor se fija después de inspeccionar la distribución de
-# war_total = war_wins + war_losses + war_ties.
+# Este valor se fija después de inspeccionar la distribución de:
+#   war_total = war_wins + war_losses + war_ties
 #
-# En el dataset procesado existe una masa importante de clanes con 0 guerras
-# y una cola derecha. Un mínimo de 5 guerras descarta clanes anecdóticos
-# (0-1 guerras) sin eliminar una fracción excesiva de observaciones con
-# historial real.
+# Para no tomar esta decisión a ciegas, se proporciona la función
+# ``_analyze_war_total_distribution``, que imprime la distribución por
+# tramos y permite justificar el umbral con datos reales.
 #
-# El umbral puede ajustarse mediante el parámetro ``min_war_total`` del builder.
+# Con los datos disponibles, el mínimo de 5 guerras descarta clanes
+# anecdóticos (0-1 guerras) y reduce el riesgo de tasas inestables por
+# historial insuficiente, sin eliminar una fracción excesiva de clanes.
 # ---------------------------------------------------------------------------
 MIN_WAR_HISTORY_DEFAULT = 5
 
@@ -65,6 +66,48 @@ CLAN_STRUCTURAL_FEATURES = [
     "location_id",
     "location_name",
 ]
+
+
+def _analyze_war_total_distribution(clans_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Imprime y devuelve la distribución de ``war_total`` por tramos.
+
+    Esta función permite inspeccionar la masa de clanes con historial 0,
+    1, 2, ... y elegir un umbral mínimo de historial bélico razonable.
+    """
+    if "war_total" not in clans_df.columns:
+        df = clans_df.copy()
+        df["war_total"] = (
+            df["war_wins"].astype(float)
+            + df["war_losses"].astype(float)
+            + df["war_ties"].astype(float)
+        )
+    else:
+        df = clans_df
+
+    bins = [0, 1, 2, 3, 4, 5, 10, 20, 50, 100, np.inf]
+    labels = ["0", "1", "2", "3", "4", "5-9", "10-19", "20-49", "50-99", "100+"]
+    war_total = df["war_total"]
+    hist = pd.cut(war_total, bins=bins, labels=labels, right=False)
+    dist = hist.value_counts().sort_index()
+
+    summary = pd.DataFrame(
+        {
+            "war_total_bin": dist.index,
+            "count": dist.values,
+            "percentage": dist.values / len(df) * 100,
+        }
+    )
+
+    print("Distribución de war_total (wins + losses + ties):")
+    print(summary.to_string(index=False))
+    print(
+        f"Clanes con >= {MIN_WAR_HISTORY_DEFAULT} guerras: "
+        f"{war_total[war_total >= MIN_WAR_HISTORY_DEFAULT].count()} "
+        f"({war_total[war_total >= MIN_WAR_HISTORY_DEFAULT].count() / len(df) * 100:.1f}%)"
+    )
+
+    return summary
 
 
 def _read_parquet(path: Path) -> pd.DataFrame:
@@ -139,6 +182,11 @@ def _aggregate_clan_player_features(members_features: pd.DataFrame) -> pd.DataFr
     Agrega las features a nivel jugador a nivel clan.
 
     Devuelve un DataFrame con una fila por clan_tag.
+
+    IMPORTANTE:
+    No se agregan estadísticas bélicas históricas del jugador, como
+    war_stars. Se describe únicamente la composición / progresión / economía
+    interna del clan.
     """
     if members_features.empty:
         return pd.DataFrame()
@@ -160,7 +208,6 @@ def _aggregate_clan_player_features(members_features: pd.DataFrame) -> pd.DataFr
     add_mean_median_std("town_hall_level", "town_hall_level")
     add_mean_median_std("exp_level", "exp_level")
     add_mean_median_std("trophies", "trophies")
-    add_mean_median_std("war_stars", "war_stars")
     add_mean_median_std("donations", "donations")
     add_mean_median_std("donations_received", "donations_received")
     add_mean_median_std(
@@ -275,6 +322,8 @@ def build_war_performance_dataset(
     - Solo clanes con historial bélico total >= ``min_war_total``.
     - Se excluyen features de guerra acumulada y derivadas directas.
     - Se reutiliza player_features.parquet, sin recorrer las tablas gigantes.
+    - No se incluye rendimiento bélico histórico del jugador (por ejemplo,
+      war_stars) en las features de composición.
     """
     clans = _read_parquet(processed_dir / "clans.parquet")
 
@@ -291,6 +340,12 @@ def build_war_performance_dataset(
         + clans["war_losses"].astype(float)
         + clans["war_ties"].astype(float)
     )
+
+    # ------------------------------------------------------------------
+    # Opcional: inspeccionar distribución para justificar min_war_total.
+    # Descomentar para ver el resumen antes de fijar el umbral.
+    # _analyze_war_total_distribution(clans)
+    # ------------------------------------------------------------------
 
     # ------------------------------------------------------------------
     # Filtrar clanes con historial insuficiente
