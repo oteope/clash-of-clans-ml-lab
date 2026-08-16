@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -47,6 +46,26 @@ DERIVED_WAR_FEATURES = {
     "war_success_rate",
 }
 
+# ---------------------------------------------------------------------------
+# Whitelist explícita de features estructurales del clan.
+# Cualquier columna de clans.parquet que no esté en esta lista no se usará
+# como feature, aunque no sea una variable de guerra.
+# ---------------------------------------------------------------------------
+CLAN_STRUCTURAL_FEATURES = [
+    "clan_level",
+    "clan_points",
+    "clan_capital_points",
+    "members",
+    "required_trophies",
+    "war_frequency",
+    "war_league",
+    "capital_league",
+    "type",
+    "is_family_friendly",
+    "location_id",
+    "location_name",
+]
+
 
 def _read_parquet(path: Path) -> pd.DataFrame:
     """Lee un archivo Parquet y produce un error claro si no existe."""
@@ -59,7 +78,9 @@ def _load_clan_members(processed_dir: Path) -> pd.DataFrame:
     """
     Carga clan_members.parquet y conserva únicamente player_tag y clan_tag.
 
-    Elimina duplicados de player_tag para evitar multiplicación de filas.
+    Deduplica por la pareja (clan_tag, player_tag), no por player_tag.
+    Un jugador puede aparecer en varios clanes; todas las relaciones válidas
+    deben mantenerse.
     """
     members = _read_parquet(processed_dir / "clan_members.parquet")
     required = {"player_tag", "clan_tag"}
@@ -69,7 +90,19 @@ def _load_clan_members(processed_dir: Path) -> pd.DataFrame:
         )
 
     members = members[["player_tag", "clan_tag"]].copy()
-    members = members.drop_duplicates(subset="player_tag", keep="first")
+
+    # Eliminar únicamente duplicados exactos de la relación clan-jugador.
+    members = members.drop_duplicates(
+        subset=["clan_tag", "player_tag"], keep="first"
+    )
+
+    # Validación defensiva: no puede haber más de una fila por (clan_tag, player_tag)
+    if members.duplicated(subset=["clan_tag", "player_tag"]).any():
+        raise ValueError(
+            "clan_members.parquet contiene relaciones duplicadas "
+            "(clan_tag, player_tag)"
+        )
+
     return members
 
 
@@ -91,7 +124,13 @@ def _load_player_features(features_dir: Path) -> pd.DataFrame:
     if "player_tag" not in pf.columns:
         raise ValueError("player_features.parquet no contiene player_tag")
 
-    pf = pf.drop_duplicates(subset="player_tag", keep="first")
+    # Comprobación obligatoria: un único registro por player_tag.
+    if not pf["player_tag"].is_unique:
+        raise ValueError(
+            "player_features.parquet contiene player_tag duplicados. "
+            "Debe existir exactamente una fila por jugador antes del merge."
+        )
+
     return pf
 
 
@@ -270,13 +309,14 @@ def build_war_performance_dataset(
     valid_clans = valid_clans[valid_clans["war_success_rate"].notna()].copy()
 
     # ------------------------------------------------------------------
-    # Excluir variables de leakage y derivadas
+    # Separar target y features estructurales usando whitelist
     # ------------------------------------------------------------------
-    drop_cols = [c for c in EXCLUDED_WAR_FEATURES if c in valid_clans.columns]
-    drop_cols += [c for c in DERIVED_WAR_FEATURES if c in valid_clans.columns]
-    drop_cols += ["war_total"]
+    target = valid_clans[["clan_tag", "war_success_rate"]].copy()
 
-    clan_features = valid_clans.drop(columns=drop_cols, errors="ignore")
+    available_clan_cols = [
+        c for c in CLAN_STRUCTURAL_FEATURES if c in valid_clans.columns
+    ]
+    clan_features = valid_clans[["clan_tag"] + available_clan_cols].copy()
 
     # ------------------------------------------------------------------
     # Unir composición del clan
@@ -290,6 +330,9 @@ def build_war_performance_dataset(
     result = clan_features.merge(
         clan_composition, left_on="clan_tag", right_index=True, how="left"
     )
+
+    # Unir el target
+    result = result.merge(target, on="clan_tag", how="left")
 
     # Garantizar una fila por clan
     result = result.drop_duplicates(subset="clan_tag", keep="first")
