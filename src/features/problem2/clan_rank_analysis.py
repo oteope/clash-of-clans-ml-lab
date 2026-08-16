@@ -37,8 +37,21 @@ def _merge_for_analysis(
     if player_features_df is None:
         return clan_members_df.copy()
 
-    merged = clan_members_df.merge(
-        player_features_df,
+    # Trabajamos con copias para no modificar los DataFrames originales.
+    clan_members = clan_members_df.copy()
+    player_features = player_features_df.copy()
+
+    # Garantiza que ambos DataFrames tengan la columna "player_tag".
+    # Si "player_tag" es el índice, lo convertimos en columna.
+    for df in (clan_members, player_features):
+        if "player_tag" not in df.columns:
+            if df.index.name == "player_tag":
+                df.reset_index(inplace=True)
+            else:
+                raise KeyError("player_tag debe ser una columna o el nombre del índice")
+
+    merged = clan_members.merge(
+        player_features,
         on="player_tag",
         how="inner",
         suffixes=("", "_player"),
