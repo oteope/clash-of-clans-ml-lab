@@ -119,6 +119,7 @@ def build_clan_rank_features(
     clan_members_df: pd.DataFrame,
     player_features_df: pd.DataFrame,
     clans_df: pd.DataFrame,
+    include_trophies: bool = True,
 ) -> pd.DataFrame:
     """
     Construye el dataset para el Problema 2: target = clan_rank.
@@ -126,6 +127,16 @@ def build_clan_rank_features(
     Una fila por (clan_tag, player_tag).
     Las relaciones sin player_features se excluyen mediante inner join.
     Las features excluidas por leakage/proxy se eliminan antes de generar el dataset.
+
+    Parámetro:
+    ----------
+    include_trophies : bool
+        Si es True, se conservan las features de trophies.
+        Si es False, se excluyen trophies y sus features derivadas:
+            - trophies
+            - trophies_diff_from_clan_mean
+            - trophies_ratio_to_clan_mean
+            - trophies_clan_pct
     """
     # 1) Auditoría de posibles proxies
     analysis_df = audit_clan_rank_proxies(clan_members_df, player_features_df)
@@ -135,10 +146,16 @@ def build_clan_rank_features(
         if row["classification"] in {"EXCLUDE", "TOO_DIRECT"}:
             banned_vars.add(row["variable"])
 
-    # 2) Join principal
+    # 2) Ajuste específico para trophies según la variante solicitada
+    if include_trophies:
+        banned_vars.discard("trophies")
+    else:
+        banned_vars.add("trophies")
+
+    # 3) Join principal
     merged = _merge_preserving_clan_values(clan_members_df, player_features_df)
 
-    # 3) Características relativas al clan
+    # 4) Características relativas al clan
     relative_cols = [
         "trophies",
         "exp_level",
@@ -152,18 +169,18 @@ def build_clan_rank_features(
     ]
     rel_features = _compute_relative_features(merged, relative_cols)
 
-    # 4) Contexto estructural del clan
+    # 5) Contexto estructural del clan
     clan_ctx = select_clan_context_features(clans_df)
     output = merged.merge(clan_ctx, on="clan_tag", how="left")
 
-    # 5) Añadir features relativas
+    # 6) Añadir features relativas
     output = output.merge(
         rel_features,
         on=["player_tag", "clan_tag"],
         how="left",
     )
 
-    # 6) Seleccionar columnas finales aplicando política anti-leakage
+    # 7) Seleccionar columnas finales aplicando política anti-leakage
     target_col = "clan_rank"
     id_cols = ["player_tag", "clan_tag"]
 
@@ -176,7 +193,7 @@ def build_clan_rank_features(
 
     final = output[id_cols + feature_cols + [target_col]].copy()
 
-    # 7) Verificaciones de seguridad
+    # 8) Verificaciones de seguridad
     assert target_col not in feature_cols, "clan_rank no debe ser feature"
     assert "previous_clan_rank" not in final.columns, "previous_clan_rank debe excluirse"
     assert "role" not in final.columns, "role no debe aparecer como feature"
@@ -188,9 +205,14 @@ def build_clan_rank_dataset(
     processed_dir: Path = PROCESSED_DIR,
     features_dir: Path = FEATURES_DIR,
     datasets_dir: Path = DATASETS_DIR,
+    include_trophies: bool = True,
 ) -> pd.DataFrame:
     """
-    Función principal que carga datos, construye el dataset y lo guarda.
+    Función principal que carga datos, construye una variante del dataset y la guarda.
+
+    La variante se decide mediante include_trophies:
+      - True  -> data/datasets/clan_rank_regression_with_trophies.parquet
+      - False -> data/datasets/clan_rank_regression_without_trophies.parquet
     """
     clan_members_df, clans_df, player_features_df = load_inputs(
         processed_dir, features_dir
@@ -200,15 +222,64 @@ def build_clan_rank_dataset(
         clan_members_df,
         player_features_df,
         clans_df,
+        include_trophies=include_trophies,
     )
 
     datasets_dir.mkdir(parents=True, exist_ok=True)
+
+    output_filename = (
+        "clan_rank_regression_with_trophies.parquet"
+        if include_trophies
+        else "clan_rank_regression_without_trophies.parquet"
+    )
+
     final.to_parquet(
-        datasets_dir / "clan_rank_regression.parquet",
+        datasets_dir / output_filename,
         index=False,
     )
     return final
 
 
+def build_clan_rank_dataset_variants(
+    processed_dir: Path = PROCESSED_DIR,
+    features_dir: Path = FEATURES_DIR,
+    datasets_dir: Path = DATASETS_DIR,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    """
+    Genera las dos variantes solicitadas:
+      1. clan_rank_regression_with_trophies.parquet
+      2. clan_rank_regression_without_trophies.parquet
+    """
+    clan_members_df, clans_df, player_features_df = load_inputs(
+        processed_dir, features_dir
+    )
+
+    with_trophies = build_clan_rank_features(
+        clan_members_df,
+        player_features_df,
+        clans_df,
+        include_trophies=True,
+    )
+    without_trophies = build_clan_rank_features(
+        clan_members_df,
+        player_features_df,
+        clans_df,
+        include_trophies=False,
+    )
+
+    datasets_dir.mkdir(parents=True, exist_ok=True)
+
+    with_trophies.to_parquet(
+        datasets_dir / "clan_rank_regression_with_trophies.parquet",
+        index=False,
+    )
+    without_trophies.to_parquet(
+        datasets_dir / "clan_rank_regression_without_trophies.parquet",
+        index=False,
+    )
+
+    return with_trophies, without_trophies
+
+
 if __name__ == "__main__":
-    build_clan_rank_dataset()
+    build_clan_rank_dataset_variants()

@@ -242,6 +242,77 @@ class TestProblem2Dataset(unittest.TestCase):
         self.assertIn("Número de observaciones analizadas: 4", output)
         mock_load.assert_called_once()
 
+    # --- Tests para variantes con/sin trophies ---
+
+    def test_variants_same_granularity(self):
+        with_df = build_clan_rank_features(
+            self.clan_members,
+            self.player_features,
+            self.clans,
+            include_trophies=True,
+        )
+        without_df = build_clan_rank_features(
+            self.clan_members,
+            self.player_features,
+            self.clans,
+            include_trophies=False,
+        )
+        self.assertEqual(len(with_df), len(without_df))
+        self.assertEqual(len(with_df), len(self.clan_members))
+
+    def test_variants_have_clan_rank_target(self):
+        for include in (True, False):
+            df = build_clan_rank_features(
+                self.clan_members,
+                self.player_features,
+                self.clans,
+                include_trophies=include,
+            )
+            self.assertIn("clan_rank", df.columns)
+
+    def test_variants_do_not_contain_previous_clan_rank_or_role(self):
+        for include in (True, False):
+            df = build_clan_rank_features(
+                self.clan_members,
+                self.player_features,
+                self.clans,
+                include_trophies=include,
+            )
+            self.assertNotIn("previous_clan_rank", df.columns)
+            self.assertNotIn("role", df.columns)
+
+    def test_with_trophies_contains_all_trophies_features(self):
+        trophy_features = {
+            "trophies",
+            "trophies_diff_from_clan_mean",
+            "trophies_ratio_to_clan_mean",
+            "trophies_clan_pct",
+        }
+        df = build_clan_rank_features(
+            self.clan_members,
+            self.player_features,
+            self.clans,
+            include_trophies=True,
+        )
+        for col in trophy_features:
+            self.assertIn(col, df.columns)
+
+    def test_without_trophies_does_not_contain_trophies_features(self):
+        trophy_features = {
+            "trophies",
+            "trophies_diff_from_clan_mean",
+            "trophies_ratio_to_clan_mean",
+            "trophies_clan_pct",
+        }
+        df = build_clan_rank_features(
+            self.clan_members,
+            self.player_features,
+            self.clans,
+            include_trophies=False,
+        )
+        for col in trophy_features:
+            self.assertNotIn(col, df.columns)
+
 
 if __name__ == "__main__":
     unittest.main()
