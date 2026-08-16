@@ -71,6 +71,10 @@ def _merge_for_analysis(
     clan_members = _ensure_player_tag_column(clan_members_df, "clan_members_df")
     player_features = _ensure_player_tag_column(player_features_df, "player_features_df")
 
+    # Normalizar explícitamente player_tag como identificador string.
+    clan_members["player_tag"] = clan_members["player_tag"].astype(str)
+    player_features["player_tag"] = player_features["player_tag"].astype(str)
+
     merged = clan_members.merge(
         player_features,
         on="player_tag",
