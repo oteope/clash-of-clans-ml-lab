@@ -1,4 +1,6 @@
 import unittest
+from contextlib import redirect_stdout
+import io
 
 import numpy as np
 import pandas as pd
@@ -7,7 +9,11 @@ from src.features.problem2.build_clan_rank_dataset import (
     _merge_preserving_clan_values,
     build_clan_rank_features,
 )
-from src.features.problem2.clan_rank_analysis import audit_clan_rank_proxies
+from src.features.problem2.clan_rank_analysis import (
+    CANDIDATE_VARIABLES,
+    audit_clan_rank_proxies,
+    main,
+)
 
 
 def make_clan_members():
@@ -168,7 +174,7 @@ class TestProblem2Dataset(unittest.TestCase):
         trophies_row = self.analysis[self.analysis["variable"] == "trophies"].iloc[0]
         self.assertIn(
             trophies_row["classification"],
-            ["SAFE", "PROXY", "TOO_DIRECT", "EXCLUDE"],
+            ["SAFE", "POTENTIAL PROXY", "TOO_DIRECT", "EXCLUDE"],
         )
 
     def test_trophies_excluded_if_too_direct(self):
@@ -183,6 +189,34 @@ class TestProblem2Dataset(unittest.TestCase):
         merged = _merge_preserving_clan_values(self.clan_members, self.player_features)
         for _, row in merged.iterrows():
             self.assertIn(row["trophies"], [2500, 3000, 3500, 2800])
+
+    # --- Nuevos tests para la tarea ---
+
+    def test_audit_returns_results(self):
+        self.assertGreater(len(self.analysis), 0)
+
+    def test_trophies_in_analysis(self):
+        self.assertIn("trophies", self.analysis["variable"].tolist())
+
+    def test_candidate_variables_appear(self):
+        for var in CANDIDATE_VARIABLES:
+            if var in self.clan_members.columns or var in self.player_features.columns:
+                self.assertIn(var, self.analysis["variable"].tolist())
+
+    def test_each_variable_has_classification(self):
+        self.assertFalse(self.analysis["classification"].isna().any())
+        valid = {"SAFE", "POTENTIAL PROXY", "TOO_DIRECT", "EXCLUDE"}
+        for c in self.analysis["classification"]:
+            self.assertIn(c, valid)
+
+    def test_main_runs_and_prints_report(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            main(self.clan_members, self.player_features)
+        output = buf.getvalue()
+        self.assertIn("Número de observaciones analizadas", output)
+        self.assertIn("Conclusión sobre trophies", output)
+        self.assertIn("trophies", output)
 
 
 if __name__ == "__main__":

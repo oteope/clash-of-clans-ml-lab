@@ -3,6 +3,7 @@ from typing import Optional
 import numpy as np
 import pandas as pd
 
+
 # Variables que jamás pueden usarse como features,
 # independientemente de los resultados del análisis.
 ALWAYS_EXCLUDED = {"clan_rank", "previous_clan_rank", "role"}
@@ -125,7 +126,7 @@ def audit_clan_rank_proxies(
                 "Puede contener la misma información que el ranking."
             )
         elif abs(median) >= 0.8 or high_pct >= 0.5:
-            classification = "PROXY"
+            classification = "POTENTIAL PROXY"
             reason = (
                 "Fuerte relación con clan_rank. Posible proxy del ranking; "
                 "debe revisarse antes de incluirla definitivamente."
@@ -154,3 +155,47 @@ def print_audit_report(analysis_df: pd.DataFrame) -> None:
     for _, row in analysis_df.iterrows():
         print(f"- {row['variable']:25s}: {row['classification']:11s} | {row['reason']}")
     print("==========================================\n")
+
+
+def main(
+    clan_members_df: Optional[pd.DataFrame] = None,
+    player_features_df: Optional[pd.DataFrame] = None,
+) -> None:
+    """
+    Punto de entrada para ejecutar el módulo desde consola.
+
+    Carga los datos si no se proporcionan, ejecuta la auditoría y
+    muestra un informe legible por consola.
+    """
+    if clan_members_df is None:
+        try:
+            from src.features.problem2.build_clan_rank_dataset import load_inputs
+
+            clan_members_df, player_features_df, _ = load_inputs()
+        except Exception as exc:
+            print(f"Error cargando datos: {exc}")
+            return
+
+    merged_for_count = _merge_for_analysis(clan_members_df, player_features_df)
+    n_obs = len(merged_for_count)
+    print(f"Número de observaciones analizadas: {n_obs}")
+
+    analysis_df = audit_clan_rank_proxies(clan_members_df, player_features_df)
+
+    print_audit_report(analysis_df)
+
+    trophies_row = analysis_df.loc[analysis_df["variable"] == "trophies"]
+    if not trophies_row.empty:
+        row = trophies_row.iloc[0]
+        print("\nConclusión sobre trophies:")
+        print(f"- Clasificación: {row['classification']}")
+        print(f"- Correlación mediana: {row['median_spearman']}")
+        print(f"- p90 abs: {row['p90_abs_spearman']}")
+        print(f"- % clanes con |corr| > 0.9: {row['pct_clans_abs_gt_90']}")
+        print(f"- Motivo: {row['reason']}")
+    else:
+        print("\nConclusión sobre trophies: variable no encontrada en el análisis")
+
+
+if __name__ == "__main__":
+    main()
