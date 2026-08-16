@@ -13,6 +13,7 @@ from src.features.problem2.clan_rank_analysis import (
     CANDIDATE_VARIABLES,
     audit_clan_rank_proxies,
     main,
+    _merge_for_analysis,
 )
 
 
@@ -217,6 +218,18 @@ class TestProblem2Dataset(unittest.TestCase):
         self.assertIn("Número de observaciones analizadas", output)
         self.assertIn("Conclusión sobre trophies", output)
         self.assertIn("trophies", output)
+
+    def test_merge_for_analysis_with_player_tag_column(self):
+        merged = _merge_for_analysis(self.clan_members, self.player_features)
+        self.assertIn("player_tag", merged.columns)
+        self.assertEqual(len(merged), 4)
+
+    def test_merge_for_analysis_with_player_tag_index(self):
+        # Caso con índice sin nombre que contiene player_tag
+        pf_indexed = self.player_features.set_index("player_tag").rename_axis(None)
+        merged = _merge_for_analysis(self.clan_members, pf_indexed)
+        self.assertIn("player_tag", merged.columns)
+        self.assertEqual(len(merged), 4)
 
 
 if __name__ == "__main__":

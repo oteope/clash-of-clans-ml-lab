@@ -23,6 +23,37 @@ CANDIDATE_VARIABLES = [
 ]
 
 
+def _ensure_player_tag_column(df: pd.DataFrame, df_name: str = "DataFrame") -> pd.DataFrame:
+    """
+    Garantiza que el DataFrame tenga una columna ``player_tag``.
+
+    Si ``player_tag`` ya es columna, devuelve una copia.
+    Si está como índice, lo restaura como columna, soportando índices con
+    nombre o sin él.
+    """
+    if "player_tag" in df.columns:
+        return df.copy()
+
+    df_reset = df.reset_index()
+
+    # Si reset_index ya creó player_tag, lo usamos directamente.
+    if "player_tag" in df_reset.columns:
+        return df_reset
+
+    # Si no existe player_tag y reset_index añadió exactamente una columna,
+    # la primera columna es el índice original y debe contener player_tag.
+    if len(df_reset.columns) == len(df.columns) + 1:
+        first_col = df_reset.columns[0]
+        df_reset = df_reset.rename(columns={first_col: "player_tag"})
+        return df_reset
+
+    # Si no pudimos identificar player_tag, y el primer caso no se dio,
+    # reportamos un mensaje específico para facilitar el diagnóstico.
+    raise KeyError(
+        f"{df_name}: no se pudo identificar la columna 'player_tag'"
+    )
+
+
 def _merge_for_analysis(
     clan_members_df: pd.DataFrame,
     player_features_df: Optional[pd.DataFrame] = None,
@@ -37,18 +68,8 @@ def _merge_for_analysis(
     if player_features_df is None:
         return clan_members_df.copy()
 
-    # Trabajamos con copias para no modificar los DataFrames originales.
-    clan_members = clan_members_df.copy()
-    player_features = player_features_df.copy()
-
-    # Garantiza que ambos DataFrames tengan la columna "player_tag".
-    # Si "player_tag" es el índice, lo convertimos en columna.
-    for df in (clan_members, player_features):
-        if "player_tag" not in df.columns:
-            if df.index.name == "player_tag":
-                df.reset_index(inplace=True)
-            else:
-                raise KeyError("player_tag debe ser una columna o el nombre del índice")
+    clan_members = _ensure_player_tag_column(clan_members_df, "clan_members_df")
+    player_features = _ensure_player_tag_column(player_features_df, "player_features_df")
 
     merged = clan_members.merge(
         player_features,
