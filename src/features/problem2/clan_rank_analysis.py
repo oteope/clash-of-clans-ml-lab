@@ -147,8 +147,8 @@ def audit_clan_rank_proxies(
                     "median_spearman": np.nan,
                     "p90_abs_spearman": np.nan,
                     "pct_clans_abs_gt_90": np.nan,
-                    "classification": "SAFE",
-                    "reason": "No hay clanes suficientes para evaluar la relación.",
+                    "classification": "INSUFFICIENT_DATA",
+                    "reason": "No hay clanes suficientes para evaluar la relación; se necesita más evidencia.",
                 }
             )
             continue
@@ -209,7 +209,7 @@ def main(
         try:
             from src.features.problem2.build_clan_rank_dataset import load_inputs
 
-            clan_members_df, player_features_df, _ = load_inputs()
+            clan_members_df, _, player_features_df = load_inputs()
         except Exception as exc:
             print(f"Error cargando datos: {exc}")
             return

@@ -1,6 +1,7 @@
 import unittest
 from contextlib import redirect_stdout
 import io
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -175,7 +176,7 @@ class TestProblem2Dataset(unittest.TestCase):
         trophies_row = self.analysis[self.analysis["variable"] == "trophies"].iloc[0]
         self.assertIn(
             trophies_row["classification"],
-            ["SAFE", "POTENTIAL PROXY", "TOO_DIRECT", "EXCLUDE"],
+            ["SAFE", "POTENTIAL PROXY", "TOO_DIRECT", "EXCLUDE", "INSUFFICIENT_DATA"],
         )
 
     def test_trophies_excluded_if_too_direct(self):
@@ -206,7 +207,7 @@ class TestProblem2Dataset(unittest.TestCase):
 
     def test_each_variable_has_classification(self):
         self.assertFalse(self.analysis["classification"].isna().any())
-        valid = {"SAFE", "POTENTIAL PROXY", "TOO_DIRECT", "EXCLUDE"}
+        valid = {"SAFE", "POTENTIAL PROXY", "TOO_DIRECT", "EXCLUDE", "INSUFFICIENT_DATA"}
         for c in self.analysis["classification"]:
             self.assertIn(c, valid)
 
@@ -230,6 +231,16 @@ class TestProblem2Dataset(unittest.TestCase):
         merged = _merge_for_analysis(self.clan_members, pf_indexed)
         self.assertIn("player_tag", merged.columns)
         self.assertEqual(len(merged), 4)
+
+    @patch('src.features.problem2.build_clan_rank_dataset.load_inputs')
+    def test_main_without_dataframes_loads_inputs_correctly(self, mock_load):
+        mock_load.return_value = (self.clan_members, self.clans, self.player_features)
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            main(None, None)
+        output = buf.getvalue()
+        self.assertIn("Número de observaciones analizadas: 4", output)
+        mock_load.assert_called_once()
 
 
 if __name__ == "__main__":
