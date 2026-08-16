@@ -313,6 +313,35 @@ class TestProblem2Dataset(unittest.TestCase):
         for col in trophy_features:
             self.assertNotIn(col, df.columns)
 
+    def test_without_trophies_does_not_contain_additional_trophy_related_columns(self):
+        banned_related = {
+            "best_trophies",
+            "progression_ratio_trophies",
+            "clan_mean_trophies",
+            "required_trophies",
+        }
+        df = build_clan_rank_features(
+            self.clan_members,
+            self.player_features,
+            self.clans,
+            include_trophies=False,
+        )
+        for col in banned_related:
+            self.assertNotIn(col, df.columns)
+
+    def test_variants_have_no_duplicates(self):
+        for include in (True, False):
+            df = build_clan_rank_features(
+                self.clan_members,
+                self.player_features,
+                self.clans,
+                include_trophies=include,
+            )
+            self.assertEqual(
+                df.duplicated(subset=["player_tag", "clan_tag"]).sum(),
+                0,
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

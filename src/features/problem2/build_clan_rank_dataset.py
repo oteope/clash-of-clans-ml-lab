@@ -132,11 +132,15 @@ def build_clan_rank_features(
     ----------
     include_trophies : bool
         Si es True, se conservan las features de trophies.
-        Si es False, se excluyen trophies y sus features derivadas:
+        Si es False, se excluyen trophies y todas sus variables relacionadas:
             - trophies
             - trophies_diff_from_clan_mean
             - trophies_ratio_to_clan_mean
             - trophies_clan_pct
+            - best_trophies
+            - progression_ratio_trophies
+            - clan_mean_trophies
+            - required_trophies
     """
     # 1) Auditoría de posibles proxies
     analysis_df = audit_clan_rank_proxies(clan_members_df, player_features_df)
@@ -150,7 +154,18 @@ def build_clan_rank_features(
     if include_trophies:
         banned_vars.discard("trophies")
     else:
-        banned_vars.add("trophies")
+        # Excluir todas las columnas relacionadas con trophies para 2B
+        trophy_related_banned = {
+            "trophies",
+            "trophies_diff_from_clan_mean",
+            "trophies_ratio_to_clan_mean",
+            "trophies_clan_pct",
+            "best_trophies",
+            "progression_ratio_trophies",
+            "clan_mean_trophies",
+            "required_trophies",
+        }
+        banned_vars.update(trophy_related_banned)
 
     # 3) Join principal
     merged = _merge_preserving_clan_values(clan_members_df, player_features_df)
