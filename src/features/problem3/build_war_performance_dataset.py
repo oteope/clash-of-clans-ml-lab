@@ -262,6 +262,10 @@ def _aggregate_clan_player_features(members_features: pd.DataFrame) -> pd.DataFr
 
     sums = grouped.agg(**sum_specs)
 
+    # Merge de las sumas (incluye member_count) para que formen parte
+    # del contrato final de features agregadas.
+    result = result.merge(sums, left_index=True, right_index=True, how="left")
+
     # --------------------------------------------------------------
     # Ratios y balances adicionales
     # --------------------------------------------------------------
@@ -296,12 +300,21 @@ def _fill_missing_values(df: pd.DataFrame) -> pd.DataFrame:
 
     Se excluye ``clan_tag`` para no imputar el identificador.
     """
+    def _is_boolean_series(series: pd.Series) -> bool:
+        """Detecta series booleanas, incluidas las de dtype object con True/False/None."""
+        if pd.api.types.is_bool_dtype(series):
+            return True
+        non_null = series.dropna()
+        if len(non_null) == 0:
+            return False
+        return all(isinstance(v, (bool, np.bool_)) for v in non_null)
+
     out = df.copy()
     for col in out.columns:
         if col == "clan_tag":
             continue
-        if pd.api.types.is_bool_dtype(out[col]):
-            out[col] = out[col].fillna(False)
+        if _is_boolean_series(out[col]):
+            out[col] = out[col].fillna(False).astype(bool)
         elif pd.api.types.is_numeric_dtype(out[col]):
             out[col] = out[col].fillna(0)
         else:
