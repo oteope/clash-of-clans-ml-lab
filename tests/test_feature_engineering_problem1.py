@@ -7,14 +7,14 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from src.features.player_features import (
+from src.features.problem1.player_features import (
     aggregate_progression_df,
     aggregate_achievements,
     build_player_features,
     build_player_features_from_files,
 )
-from src.features.player_clan_features import compute_clan_relative_features
-from src.features.build_role_dataset import (
+from src.features.problem1.player_clan_features import compute_clan_relative_features
+from src.features.problem1.build_role_dataset import (
     select_clan_context_features,
     assemble_role_dataset,
     build_all_features,
