@@ -21,6 +21,9 @@ EXCLUDED_COLUMNS = [
     "war_points",
     "war_total",
     "war_success_rate",
+    "win_rate",
+    "loss_rate",
+    "tie_rate",
 ]
 
 
