@@ -116,7 +116,7 @@ def build_player_clustering_dataset(
 ) -> Dict[str, Any]:
     """Construye el dataset de clustering de jugadores a partir de player_features.parquet.
 
-    El dataset resultante contiene únicamente player_tag y features numéricas.
+    Solo se utilizan las columnas incluidas en la whitelist explícita.
     No se aplica escalado, PCA ni selección de clusters.
     """
     df = _load_features(player_features_path)
@@ -136,18 +136,36 @@ def build_player_clustering_dataset(
     excluded_columns = [col for col in feature_df.columns if _is_excluded_column(col)]
     feature_df = feature_df.drop(columns=excluded_columns)
 
-    # Solo se conservan columnas numéricas.
-    numeric_cols = feature_df.select_dtypes(include=[np.number]).columns.tolist()
-    if not numeric_cols:
-        raise ValueError("No se encontraron features numéricas en player_features.parquet.")
+    # WHITELIST explícita: CANDIDATE_FEATURES + DERIVED_CANDIDATE_FEATURES
+    whitelist = list(dict.fromkeys(CANDIDATE_FEATURES + DERIVED_CANDIDATE_FEATURES))
+    candidate_features_total = len(whitelist)
 
-    missing_info = _document_missing(feature_df, numeric_cols)
+    available_whitelist = [col for col in whitelist if col in feature_df.columns]
+    missing_whitelist = [col for col in whitelist if col not in feature_df.columns]
 
-    imputed_df = feature_df[numeric_cols].copy()
+    numeric_candidate_cols = [
+        col
+        for col in available_whitelist
+        if pd.api.types.is_numeric_dtype(feature_df[col])
+    ]
+    non_numeric_candidate_cols = [
+        col
+        for col in available_whitelist
+        if not pd.api.types.is_numeric_dtype(feature_df[col])
+    ]
+
+    if not numeric_candidate_cols:
+        raise ValueError(
+            "No se encontraron features numéricas de la whitelist en player_features.parquet."
+        )
+
+    missing_info = _document_missing(feature_df, numeric_candidate_cols)
+
+    imputed_df = feature_df[numeric_candidate_cols].copy()
     dropped_all_missing: List[str] = []
     imputed_medians: Dict[str, float] = {}
 
-    for col in numeric_cols:
+    for col in numeric_candidate_cols:
         n_missing = missing_info[col]["missing_count"]
 
         # Si toda la columna está vacía, no aporta información.
@@ -184,17 +202,13 @@ def build_player_clustering_dataset(
     report: Dict[str, Any] = {
         "input_rows": len(df),
         "duplicate_player_tags": 0,
-        "candidate_features_available": [
-            col for col in CANDIDATE_FEATURES if col in feature_df.columns
-        ],
-        "candidate_features_missing": [
-            col for col in CANDIDATE_FEATURES if col not in feature_df.columns
-        ],
-        "derived_candidate_features_available": [
-            col for col in DERIVED_CANDIDATE_FEATURES if col in feature_df.columns
-        ],
+        "whitelist_feature_count": candidate_features_total,
+        "available_candidate_features": available_whitelist,
+        "missing_candidate_features": missing_whitelist,
+        "non_numeric_candidate_features": non_numeric_candidate_cols,
+        "numeric_candidate_features": numeric_candidate_cols,
         "excluded_columns": excluded_columns,
-        "numeric_feature_count_before_imputation": len(numeric_cols),
+        "numeric_feature_count_before_imputation": len(numeric_candidate_cols),
         "missing_columns": missing_info,
         "imputed_medians": imputed_medians,
         "dropped_all_missing_columns": dropped_all_missing,
