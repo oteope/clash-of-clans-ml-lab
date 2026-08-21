@@ -8,6 +8,7 @@ import pandas as pd
 from mlflow.tracking import MlflowClient
 
 from mlflow_tracking.tracking_utils import (
+    configure_tracking,
     mlflow_run,
     log_dataset_context,
     log_split_config,
@@ -25,8 +26,8 @@ class TestMLflowSmoke(unittest.TestCase):
         self.tracking_dir = Path(self.temp_dir.name)
         self.backend_uri = f"sqlite:///{self.tracking_dir / 'mlflow.db'}"
         self.artifact_root = self.tracking_dir / "mlruns"
-        mlflow.set_tracking_uri(self.backend_uri)
-        mlflow.set_experiment("smoke_test")
+        # Configure MLflow tracking explicitly for this test
+        configure_tracking(tracking_uri=self.backend_uri)
 
     def tearDown(self):
         try:
@@ -39,6 +40,7 @@ class TestMLflowSmoke(unittest.TestCase):
         # Create a dummy dataset file to compute hash
         dataset_path = self.tracking_dir / "dummy.parquet"
         pd.DataFrame({"a": [1, 2, 3]}).to_parquet(dataset_path)
+
         experiment_name = get_experiment_name("p1")
         with mlflow_run(experiment_name, run_name="smoke_run") as run:
             log_dataset_context(dataset_path, row_count=3, feature_count=1, target="a")
@@ -50,6 +52,7 @@ class TestMLflowSmoke(unittest.TestCase):
             model = DummyClassifier(strategy="most_frequent")
             model.fit([[1], [2], [3]], [0, 1, 0])
             log_model_and_artifacts(model)
+
         # Check run
         client = MlflowClient()
         experiment = client.get_experiment_by_name(experiment_name)
@@ -57,7 +60,10 @@ class TestMLflowSmoke(unittest.TestCase):
         runs = client.search_runs(experiment_ids=[experiment.experiment_id])
         self.assertEqual(len(runs), 1)
         run_data = runs[0].data
+
         self.assertEqual(run_data.params["row_count"], "3")
         self.assertEqual(run_data.params["feature_count"], "1")
         self.assertIn("accuracy", run_data.metrics)
         self.assertAlmostEqual(run_data.metrics["accuracy"], 0.9)
+        # Verify standard tag problem_name is present
+        self.assertEqual(run_data.tags.get("problem_name"), experiment_name)

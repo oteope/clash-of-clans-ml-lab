@@ -261,7 +261,7 @@ This project uses **MLflow** para el seguimiento local y reproducible de experim
 
 Instala las dependencias:
 
-```bash
+```powershell
 pip install -r requirements.txt
 ```
 
@@ -269,35 +269,37 @@ pip install -r requirements.txt
 
 Arranca el servidor de tracking en `127.0.0.1:5000`:
 
-```bash
-mlflow server \
-  --backend-store-uri sqlite:///mlflow/mlflow.db \
-  --default-artifact-root ./mlflow/mlruns \
-  --host 127.0.0.1 \
+```powershell
+mlflow server `
+  --backend-store-uri sqlite:///mlflow/mlflow.db `
+  --default-artifact-root ./mlflow/mlruns `
+  --host 127.0.0.1 `
   --port 5000
 ```
 
 Establece la URI de tracking en el entorno:
 
-```bash
-export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+```powershell
+$env:MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
 ```
 
 ### Convenciones de experimentos
 
 Cada problema tiene un experimento dedicado:
 
-| Código | Nombre de experimento        |
-|--------|------------------------------|
-| p1     | `p1_role_classification`     |
-| p2     | `p2_clan_rank`               |
-| p3     | `p3_war_performance`         |
-| p5     | `p5_player_clustering`       |
+| Código | Nombre de experimento                    |
+|--------|------------------------------------------|
+| p1     | `p1_role_classification`                 |
+| p2     | `p2_clan_rank`                           |
+| p3     | `p3_war_performance`                     |
+| p4     | `p4_clan_performance_classification`     |
+| p5     | `p5_player_clustering`                   |
 
 ### Uso en código
 
 ```python
 from mlflow_tracking.tracking_utils import (
+    configure_tracking,
     mlflow_run,
     log_dataset_context,
     log_split_config,
@@ -306,6 +308,8 @@ from mlflow_tracking.tracking_utils import (
     log_model_and_artifacts,
 )
 from mlflow_tracking.experiments import get_experiment_name
+
+configure_tracking()  # usa MLFLOW_TRACKING_URI o sqlite local por defecto
 
 experiment_name = get_experiment_name("p1")
 with mlflow_run(experiment_name, run_name="mi_experimento"):
@@ -324,7 +328,7 @@ with mlflow_run(experiment_name, run_name="mi_experimento"):
 
 ### Test de humo
 
-```bash
+```powershell
 python -m unittest tests.test_mlflow_smoke
 ```
 

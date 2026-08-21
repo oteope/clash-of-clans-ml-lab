@@ -4,6 +4,7 @@ PROBLEM_EXPERIMENTS = {
     "p1": "p1_role_classification",
     "p2": "p2_clan_rank",
     "p3": "p3_war_performance",
+    "p4": "p4_clan_performance_classification",
     "p5": "p5_player_clustering",
 }
 
