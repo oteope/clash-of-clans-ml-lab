@@ -5,7 +5,8 @@ repomix-output.xml
 data
 _pycache_
 # MLflow local tracking
-mlflow/mlflow.db
-mlflow/mlruns/
 mlflow/artifacts/
+mlruns/
+# MLflow
+mlflow.db
 mlruns/
