@@ -7,6 +7,8 @@ import mlflow
 import pandas as pd
 from mlflow.tracking import MlflowClient
 
+import mlflow_tracking.tracking_utils as tracking_utils
+
 from mlflow_tracking.tracking_utils import (
     configure_tracking,
     mlflow_run,
@@ -26,7 +28,14 @@ class TestMLflowSmoke(unittest.TestCase):
         self.tracking_dir = Path(self.temp_dir.name)
         self.backend_uri = f"sqlite:///{self.tracking_dir / 'mlflow.db'}"
         self.artifact_root = self.tracking_dir / "mlruns"
-        # Configure MLflow tracking explicitly for this test
+        self.artifact_root.mkdir(parents=True, exist_ok=True)
+
+        # Save and patch the default artifact root so this test writes into the
+        # temporary directory rather than the project's mlflow/mlruns folder.
+        self.original_artifact_root = tracking_utils.DEFAULT_ARTIFACT_ROOT
+        tracking_utils.DEFAULT_ARTIFACT_ROOT = str(self.artifact_root)
+
+        # Configure MLflow tracking explicitly for this test.
         configure_tracking(tracking_uri=self.backend_uri)
 
     def tearDown(self):
@@ -34,6 +43,14 @@ class TestMLflowSmoke(unittest.TestCase):
             mlflow.end_run()
         except Exception:
             pass
+
+        # Release SQLite connections before deleting the temporary directory.
+        # This is essential on Windows to avoid WinError 32.
+        tracking_utils.close_tracking_store()
+
+        # Restore the original default artifact root.
+        tracking_utils.DEFAULT_ARTIFACT_ROOT = self.original_artifact_root
+
         self.temp_dir.cleanup()
 
     def test_local_run_records_metadata(self):

@@ -4,7 +4,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import tempfile
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, Optional, Union
@@ -65,6 +64,25 @@ def _ensure_artifact_root() -> None:
     """Ensure the default artifact root directory exists."""
     Path(DEFAULT_ARTIFACT_ROOT).mkdir(parents=True, exist_ok=True)
 
+def close_tracking_store() -> None:
+    """
+    Release SQLAlchemy connections for the current MLflow tracking store.
+
+    This is useful in tests and short-lived scripts that need to remove
+    temporary SQLite databases without hitting file-locking errors on Windows.
+    """
+    try:
+        from mlflow.store.tracking.sqlalchemy_store import SqlAlchemyStore
+    except ImportError:
+        return
+
+    client = MlflowClient()
+    store = client._tracking_client.store
+    if isinstance(store, SqlAlchemyStore):
+        engine = getattr(store, "_session_factory", None)
+        if engine and hasattr(engine, "engine"):
+            engine.engine.dispose()
+
 def configure_tracking(tracking_uri: Optional[str] = None) -> None:
     """
     Configure MLflow tracking explicitly.
@@ -89,11 +107,16 @@ def configure_tracking(tracking_uri: Optional[str] = None) -> None:
 def get_or_create_experiment(experiment_name: str) -> str:
     """Get existing experiment ID or create a new one."""
     _ensure_artifact_root()
+
+    # Convert the artifact root to a proper file:// URI. This is required on
+    # Windows where a bare absolute path is not a valid MLflow artifact URI.
+    artifact_uri = Path(DEFAULT_ARTIFACT_ROOT).resolve().as_uri()
+
     experiment = mlflow.get_experiment_by_name(experiment_name)
     if experiment is None:
         experiment_id = mlflow.create_experiment(
             experiment_name,
-            artifact_location=str(Path(DEFAULT_ARTIFACT_ROOT).resolve()),
+            artifact_location=artifact_uri,
         )
     else:
         experiment_id = experiment.experiment_id
