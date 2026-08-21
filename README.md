@@ -253,6 +253,83 @@ Before Problem 5 development started, the complete suite reached:
 
 ---
 
+## MLflow Tracking
+
+This project uses **MLflow** para el seguimiento local y reproducible de experimentos.
+
+### Requisitos
+
+Instala las dependencias:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Servidor local
+
+Arranca el servidor de tracking en `127.0.0.1:5000`:
+
+```bash
+mlflow server \
+  --backend-store-uri sqlite:///mlflow/mlflow.db \
+  --default-artifact-root ./mlflow/mlruns \
+  --host 127.0.0.1 \
+  --port 5000
+```
+
+Establece la URI de tracking en el entorno:
+
+```bash
+export MLFLOW_TRACKING_URI=http://127.0.0.1:5000
+```
+
+### Convenciones de experimentos
+
+Cada problema tiene un experimento dedicado:
+
+| Código | Nombre de experimento        |
+|--------|------------------------------|
+| p1     | `p1_role_classification`     |
+| p2     | `p2_clan_rank`               |
+| p3     | `p3_war_performance`         |
+| p5     | `p5_player_clustering`       |
+
+### Uso en código
+
+```python
+from mlflow_tracking.tracking_utils import (
+    mlflow_run,
+    log_dataset_context,
+    log_split_config,
+    log_model_params,
+    log_metrics,
+    log_model_and_artifacts,
+)
+from mlflow_tracking.experiments import get_experiment_name
+
+experiment_name = get_experiment_name("p1")
+with mlflow_run(experiment_name, run_name="mi_experimento"):
+    log_dataset_context(
+        "data/processed/p1_dataset.parquet",
+        row_count=1000,
+        feature_count=20,
+        target="role",
+    )
+    log_split_config("GroupKFold", "clan_tag", 42, {"imputer": "median"})
+    log_model_params({"n_estimators": 100, "max_depth": 3})
+    # ... entrenar, evaluar
+    log_metrics({"accuracy": 0.95})
+    log_model_and_artifacts(model, confusion_matrix=cm, class_names=["0", "1"])
+```
+
+### Test de humo
+
+```bash
+python -m unittest tests.test_mlflow_smoke
+```
+
+---
+
 # 📊 Current Status
 
 | Component            | Status |
@@ -269,7 +346,7 @@ Before Problem 5 development started, the complete suite reached:
 | 5️⃣ Problem 5        | 🟡     |
 | 📊 Full EDA          | 🟡     |
 | 🤖 Model experiments | ⬜      |
-| 📈 MLflow            | ⬜      |
+| 📈 MLflow            | ✅      |
 | 🐳 Docker            | ⬜      |
 | 🖥️ Nosana           | ⬜      |
 | 🌐 API / inference   | ⬜      |

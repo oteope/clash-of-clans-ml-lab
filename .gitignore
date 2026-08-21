@@ -4,3 +4,7 @@ Clash of clans ML lab Notes
 repomix-output.xml
 data
 _pycache_
+# MLflow local tracking
+mlflow/mlflow.db
+mlflow/mlruns/
+mlflow/artifacts/
