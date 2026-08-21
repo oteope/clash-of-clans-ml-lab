@@ -8,3 +8,4 @@ _pycache_
 mlflow/mlflow.db
 mlflow/mlruns/
 mlflow/artifacts/
+mlruns/

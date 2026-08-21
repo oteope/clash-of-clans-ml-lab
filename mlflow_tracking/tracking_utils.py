@@ -41,6 +41,30 @@ def _validate_tracking_uri(uri: str) -> None:
             )
     # sqlite:/// and file:/// are inherently local; no extra validation needed.
 
+def _ensure_sqlite_parent_directory(tracking_uri: str) -> None:
+    """Ensure that the parent directory of a SQLite tracking URI exists."""
+    parsed = urlparse(tracking_uri)
+    if parsed.scheme.lower() != "sqlite":
+        return
+
+    path = parsed.path
+    if path.startswith("//"):
+        # sqlite:////absolute/path -> /absolute/path
+        db_path = Path(path[2:])
+    elif path.startswith("/"):
+        # sqlite:///relative/path -> relative/path
+        db_path = Path(path[1:])
+    else:
+        db_path = Path(path)
+
+    parent = db_path.parent
+    if parent and not parent.exists():
+        parent.mkdir(parents=True, exist_ok=True)
+
+def _ensure_artifact_root() -> None:
+    """Ensure the default artifact root directory exists."""
+    Path(DEFAULT_ARTIFACT_ROOT).mkdir(parents=True, exist_ok=True)
+
 def configure_tracking(tracking_uri: Optional[str] = None) -> None:
     """
     Configure MLflow tracking explicitly.
@@ -56,13 +80,21 @@ def configure_tracking(tracking_uri: Optional[str] = None) -> None:
     if not tracking_uri:
         tracking_uri = DEFAULT_BACKEND_STORE_URI
     _validate_tracking_uri(tracking_uri)
+
+    # Ensure SQLite database parent directory exists before MLflow uses it.
+    _ensure_sqlite_parent_directory(tracking_uri)
+
     mlflow.set_tracking_uri(tracking_uri)
 
 def get_or_create_experiment(experiment_name: str) -> str:
     """Get existing experiment ID or create a new one."""
+    _ensure_artifact_root()
     experiment = mlflow.get_experiment_by_name(experiment_name)
     if experiment is None:
-        experiment_id = mlflow.create_experiment(experiment_name)
+        experiment_id = mlflow.create_experiment(
+            experiment_name,
+            artifact_location=str(Path(DEFAULT_ARTIFACT_ROOT).resolve()),
+        )
     else:
         experiment_id = experiment.experiment_id
     mlflow.set_experiment(experiment_name)
