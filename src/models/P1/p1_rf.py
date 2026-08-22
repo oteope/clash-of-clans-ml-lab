@@ -48,7 +48,7 @@ experiment_name = get_experiment_name("p1")
 
 with mlflow_run(
     experiment_name,
-    run_name = "rf_baseline"
+    run_name = "rf_tuned_v1"
 
 ):
     #Dataset information
@@ -90,10 +90,16 @@ with mlflow_run(
     
     #Metrics
     metrics = {
-        "accuracy": accuracy_score(y_test,y_pred),
-        "f1": f1_score(y_test, y_pred, average="weighted"),
-        "recall": recall_score(y_test, y_pred, average="weighted")
-    }
+    "accuracy": accuracy_score(y_test, y_pred),
+
+    "f1_weighted": f1_score(y_test, y_pred, average="weighted"),
+    "precision_weighted": precision_score(y_test, y_pred, average="weighted"),
+    "recall_weighted": recall_score(y_test, y_pred, average="weighted"),
+
+    "f1_macro": f1_score(y_test, y_pred, average="macro"),
+    "precision_macro": precision_score(y_test, y_pred, average="macro"),
+    "recall_macro": recall_score(y_test, y_pred, average="macro"),
+}
     
     #Save metric to Mlflow
     log_metrics(metrics)
