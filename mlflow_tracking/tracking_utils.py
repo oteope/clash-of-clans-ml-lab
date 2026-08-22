@@ -13,6 +13,8 @@ import mlflow
 import mlflow.sklearn
 import pandas as pd
 from mlflow.tracking import MlflowClient
+import mlflow.xgboost
+import xgboost as xgb
 
 DEFAULT_ARTIFACT_ROOT = "mlflow/mlruns"
 DEFAULT_BACKEND_STORE_URI = "sqlite:///mlflow/mlflow.db"
@@ -202,8 +204,13 @@ def log_model_and_artifacts(
     class_names: Optional[list] = None,
     extra_artifacts: Optional[Dict[str, str]] = None,
 ) -> None:
-    """Log a trained model and optional artifacts (e.g., confusion matrix)."""
-    mlflow.sklearn.log_model(model, artifact_path)
+    """Log a trained model and optional artifacts."""
+
+    # Select the appropriate MLflow model flavor
+    if isinstance(model, xgb.XGBModel):
+        mlflow.xgboost.log_model(model, artifact_path)
+    else:
+        mlflow.sklearn.log_model(model, artifact_path)
 
     if confusion_matrix is not None:
         try:

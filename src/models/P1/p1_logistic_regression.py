@@ -19,17 +19,31 @@ from mlflow_tracking.tracking_utils import (
     log_model_and_artifacts,
 )
 from mlflow_tracking.experiments import get_experiment_name
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
 
 
 # Loading the dataset
-DATASET_PATH = "data/dataset/role_classification.parquet"
+print("[1/7] Loading dataset...")
+DATASET_PATH = "data/datasets/role_classification.parquet"
 data = pd.read_parquet(DATASET_PATH)
 
 # Defining features and target variable
-X = data.drop(columns=["role"])
+print("[2/7] Preparing features...")
+X = data.drop(columns=[
+    "player_tag",
+    "clan_tag",
+    "war_frequency",
+    "war_league",
+    "capital_league",
+    "type",
+    "is_family_friendly",
+    "role"
+])
 y = data["role"]
 
 # Splitting the dataset
+print("[3/7] Splitting dataset...")
 X_train, X_test, y_train, y_test = train_test_split(
     X,
     y,
@@ -38,6 +52,7 @@ X_train, X_test, y_train, y_test = train_test_split(
 )
 
 # MLflow experiment
+print("[4/7] Starting MLflow run...")
 experiment_name = get_experiment_name("p1")
 
 with mlflow_run(
@@ -46,6 +61,7 @@ with mlflow_run(
 ):
 
     # Dataset information
+    print("[5/7] Logging dataset and split configuration...")
     log_dataset_context(
         DATASET_PATH,
         row_count=len(data),
@@ -62,14 +78,21 @@ with mlflow_run(
     )
 
     # Model
-    model = LogisticRegression(max_iter=1000)
+    print("[6/7] Training and evaluating model...")
+    model = Pipeline([
+        ("scaler", StandardScaler()),
+        ("classifier", LogisticRegression(
+            max_iter=1000,
+            random_state=42
+        ))
+    ])
 
     # Model hyperparameters
-    log_model_params(
-        {
-            "max_iter": 1000,
-        }
-    )
+    log_model_params({
+        "max_iter": 1000,
+        "random_state": 42,
+        "scaler": "StandardScaler",
+    })
 
     # Training
     model.fit(X_train, y_train)
@@ -90,3 +113,7 @@ with mlflow_run(
 
     # Save model
     log_model_and_artifacts(model)
+    
+    print("[7/7] MLflow run completed successfully!")
+    
+print("✓ Training pipeline finished.")
