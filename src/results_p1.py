@@ -8,10 +8,10 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import mlflow
-import mlflow.sklearn
-import mlflow.xgboost
 import numpy as np
 import pandas as pd
+import mlflow.sklearn
+import mlflow.xgboost
 
 from sklearn.metrics import (
     accuracy_score,
@@ -22,6 +22,7 @@ from sklearn.metrics import (
     recall_score,
 )
 from sklearn.model_selection import train_test_split
+from sklearn.impute import SimpleImputer
 
 
 # =============================================================================
@@ -234,69 +235,14 @@ def _find_run_id_by_name(name: str) -> str:
 # LOAD MODEL
 # =============================================================================
 
-def _load_sklearn_model_from_run(run_id: str):
+def _load_model_from_run(run_id: str):
     """
-    Load a scikit-learn model from an existing MLflow run.
+    Load model from an existing MLflow run.
     """
-
-    configure_tracking()
 
     model_uri = f"runs:/{run_id}/model"
 
-    return mlflow.sklearn.load_model(model_uri)
-
-
-def _load_xgboost_model_from_run(run_id: str):
-    """
-    Load an XGBoost model from an existing MLflow run.
-    """
-
-    configure_tracking()
-
-    model_uri = f"runs:/{run_id}/model"
-
-    return mlflow.xgboost.load_model(model_uri)
-
-
-# =============================================================================
-# FEATURE NAME EXTRACTION
-# =============================================================================
-
-def _get_expected_feature_names(model: Any) -> List[str]:
-    """
-    Return the exact feature names expected by a fitted model.
-
-    Supports scikit-learn estimators, XGBoost wrappers, and scikit-learn
-    Pipelines.  If the model is a Pipeline, the names of the original raw
-    features (before applying fitting transformations) are returned.
-    """
-
-    # Direct sklearn estimator (LogisticRegression, RandomForestClassifier, etc.)
-    direct_feature_names = getattr(model, "feature_names_in_", None)
-    if direct_feature_names is not None:
-        return list(direct_feature_names)
-
-    # XGBoost wrapper
-    try:
-        booster = model.get_booster()
-        booster_names = booster.feature_names
-        if booster_names is not None:
-            return list(booster_names)
-    except Exception:
-        pass
-
-    # sklearn Pipeline -- use the first transformer's expected raw columns
-    if hasattr(model, "steps"):
-        first_step = model.steps[0][1] if model.steps else None
-        if first_step is not None:
-            first_step_names = getattr(first_step, "feature_names_in_", None)
-            if first_step_names is not None:
-                return list(first_step_names)
-
-    raise RuntimeError(
-        "Unable to determine expected feature names from the fitted model. "
-        "Please verify the model was saved correctly."
-    )
+    return mlflow.pyfunc.load_model(model_uri)
 
 
 # =============================================================================
@@ -529,12 +475,58 @@ def _build_dataset() -> pd.DataFrame:
 
 
 # =============================================================================
+# CATEGORICAL COLUMNS
+# =============================================================================
+
+def _select_categorical_columns(
+    features: pd.DataFrame,
+    config: Dict[str, Any],
+) -> List[str]:
+    """
+    Determine categorical columns.
+
+    Current logistic regression pipeline does not use categorical
+    features, so this normally returns an empty list.
+    """
+
+    for key in (
+        "categorical_cols",
+        "categorical_features",
+        "categorical_columns",
+    ):
+
+        if key in config:
+
+            raw_cols = config[key]
+
+            if isinstance(raw_cols, list):
+
+                return [
+                    c
+                    for c in raw_cols
+                    if c in features.columns
+                ]
+
+            raise RuntimeError(
+                f"'{key}' must be a list of column names."
+            )
+
+    # Only object columns are categorical.
+    return list(
+        features.select_dtypes(
+            include="object"
+        ).columns
+    )
+
+
+# =============================================================================
 # TRAIN / TEST SPLIT
 # =============================================================================
 
 def _get_train_test_split(
     test_size: float,
     random_state: int,
+    preprocessing_config: Dict[str, Any],
 ) -> Tuple[
     pd.DataFrame,
     pd.DataFrame,
@@ -543,9 +535,6 @@ def _get_train_test_split(
 ]:
     """
     Recreate the same train/test split used during training.
-
-    The split is performed on the full raw feature matrix.  Model-specific
-    feature selection/alignment happens later during evaluation.
     """
 
     dataset = _build_dataset()
@@ -556,7 +545,11 @@ def _get_train_test_split(
         columns=[TARGET_COLUMN]
     )
 
-    # Identifiers are NOT modelling features
+    # -------------------------------------------------------------------------
+    # IMPORTANT:
+    # Identifiers are NOT modelling features.
+    # -------------------------------------------------------------------------
+
     for id_col in (
         "player_tag",
         "clan_tag",
@@ -568,7 +561,52 @@ def _get_train_test_split(
                 columns=[id_col]
             )
 
+    # -------------------------------------------------------------------------
+    # Remove the same non-feature categorical/context columns that were
+    # removed in the logistic regression training pipeline.
+    #
+    # This is particularly important because the training code explicitly
+    # removed these columns.
+    # -------------------------------------------------------------------------
+
+    columns_to_remove = [
+        "war_frequency",
+        "war_league",
+        "capital_league",
+        "type",
+        "is_family_friendly",
+    ]
+
+    for column in columns_to_remove:
+
+        if column in features.columns:
+
+            features = features.drop(
+                columns=[column]
+            )
+
+    # -------------------------------------------------------------------------
+    # Apply categorical encoding only if the preprocessing configuration
+    # explicitly contains categorical columns.
+    # -------------------------------------------------------------------------
+
+    categorical_cols = _select_categorical_columns(
+        features,
+        preprocessing_config,
+    )
+
+    if categorical_cols:
+
+        features = pd.get_dummies(
+            features,
+            columns=categorical_cols,
+            drop_first=True,
+        )
+
+    # -------------------------------------------------------------------------
     # EXACT PROJECT SPLIT
+    # -------------------------------------------------------------------------
+
     X_train, X_test, y_train, y_test = train_test_split(
         features,
         target,
@@ -583,41 +621,6 @@ def _get_train_test_split(
         y_train,
         y_test,
     )
-
-
-# =============================================================================
-# MODEL-SPECIFIC FEATURE ALIGNMENT
-# =============================================================================
-
-def _align_features_for_model(
-    X_test: pd.DataFrame,
-    model: Any,
-) -> pd.DataFrame:
-    """
-    Filter and reorder ``X_test`` to match the features expected by ``model``.
-
-    This is critical because each final model was trained with a potentially
-    different subset of features and the previous implementation used a single
-    monolithic test matrix for all models, causing mismatches and missing-value
-    errors.
-    """
-
-    expected_features = _get_expected_feature_names(model)
-
-    missing_features = [
-        col
-        for col in expected_features
-        if col not in X_test.columns
-    ]
-
-    if missing_features:
-        raise RuntimeError(
-            "The current test matrix does not contain one or more features "
-            "expected by the model: "
-            f"{missing_features}"
-        )
-
-    return X_test[expected_features].copy()
 
 
 # =============================================================================
@@ -892,9 +895,18 @@ def _extract_metrics(
     y_pred: np.ndarray,
 ) -> Dict[str, float]:
 
-    # y_true/y_pred are expected to be string class labels already
-    y_true = np.asarray(y_true).ravel()
-    y_pred = np.asarray(y_pred).ravel()
+    # -------------------------------------------------------------------------
+    # VERY IMPORTANT:
+    # At this point both arrays must use the same string labels.
+    # -------------------------------------------------------------------------
+
+    y_true = np.asarray(
+        y_true
+    ).ravel()
+
+    y_pred = np.asarray(
+        y_pred
+    ).ravel()
 
     report = classification_report(
         y_true,
@@ -1025,14 +1037,14 @@ def main() -> None:
     ]
 
     # -------------------------------------------------------------------------
-    # Load models using native flavors
+    # Load models
     # -------------------------------------------------------------------------
 
     print(
         "[2/7] Loading models from MLflow..."
     )
 
-    xgb_model = _load_xgboost_model_from_run(
+    xgb_model = _load_model_from_run(
         XGBOOST_RUN_ID
     )
 
@@ -1040,7 +1052,7 @@ def main() -> None:
         "✓ XGBoost loaded"
     )
 
-    rf_model = _load_sklearn_model_from_run(
+    rf_model = _load_model_from_run(
         RF_RUN_ID
     )
 
@@ -1048,7 +1060,7 @@ def main() -> None:
         "✓ Random Forest loaded"
     )
 
-    logreg_model = _load_sklearn_model_from_run(
+    logreg_model = _load_model_from_run(
         logistic_run_id
     )
 
@@ -1086,7 +1098,7 @@ def main() -> None:
     )
 
     # -------------------------------------------------------------------------
-    # Rebuild dataset and test split
+    # Rebuild dataset
     # -------------------------------------------------------------------------
 
     print(
@@ -1094,21 +1106,23 @@ def main() -> None:
     )
 
     (
-        _,
-        X_test_raw,
-        _,
-        y_test,
-    ) = _get_train_test_split(
-        test_size,
-        random_state,
+
+    X_train,
+    X_test,
+    _,
+    y_test,
+) = _get_train_test_split(
+    test_size,
+    random_state,
+    preprocessing_config,
+)
+
+    print(
+        f"X_test shape = {X_test.shape}"
     )
 
     print(
-        f"X_test raw shape = {X_test_raw.shape}"
-    )
-
-    print(
-        f"y_test size      = {len(y_test)}\n"
+        f"y_test size  = {len(y_test)}\n"
     )
 
     # -------------------------------------------------------------------------
@@ -1150,7 +1164,7 @@ def main() -> None:
     )
 
     # -------------------------------------------------------------------------
-    # Evaluate each model with its expected features
+    # Evaluate each model
     # -------------------------------------------------------------------------
 
     for key, (
@@ -1162,20 +1176,17 @@ def main() -> None:
             f"Evaluating {model_name}..."
         )
 
-        # Align features for this specific model
-        X_test_model = _align_features_for_model(
-            X_test_raw,
-            model,
-        )
-
-        print(
-            f"  Feature count: {X_test_model.shape[1]}"
-        )
-
         # Prediction
+        X_test_model = _prepare_model_input(
+            model_key=key,
+            model=model,
+            X_train=X_train,
+            X_test=X_test,
+        )
+
         y_pred = model.predict(
             X_test_model
-        )
+)
 
         # Some model wrappers can return tensors.
         if hasattr(
@@ -1184,12 +1195,26 @@ def main() -> None:
         ):
             y_pred = y_pred.to_numpy()
 
-        # Normalize predictions to string class labels
+        # ---------------------------------------------------------------------
+        # FIX:
+        #
+        # XGBoost may return:
+        #
+        #     [0, 1, 2, 3]
+        #
+        # while y_test contains:
+        #
+        #     ["admin", "coLeader", "leader", "member"]
+        #
+        # Normalize before sklearn metrics.
+        # ---------------------------------------------------------------------
+
         y_pred = _normalize_predictions(
             y_pred,
             model_name=model_name,
         )
 
+        # Ensure y_true is also a clean string array
         y_true = np.asarray(
             y_test
         ).ravel().astype(str)
@@ -1378,7 +1403,91 @@ def main() -> None:
         + "\n"
     )
 
+# =============================================================================
+# MODEL INPUT PREPARATION
+# =============================================================================
 
+def _prepare_model_input(
+    model_key: str,
+    model: Any,
+    X_train: pd.DataFrame,
+    X_test: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Prepare X_test for model prediction.
+
+    Logistic Regression cannot handle NaN values directly.
+    If NaNs are present, fit a median imputer ONLY on X_train
+    and apply it to X_test.
+
+    XGBoost and Random Forest are left unchanged because they
+    can handle missing values natively / through their existing
+    pipelines.
+    """
+
+    if model_key != "logistic_regression":
+        return X_test
+
+    if not X_test.isna().any().any():
+        return X_test
+
+    print("  NaN values detected in Logistic Regression input.")
+
+    nan_columns = X_test.columns[
+        X_test.isna().any()
+    ].tolist()
+
+    nan_count = int(
+        X_test.isna().sum().sum()
+    )
+
+    print(
+        f"  NaN values: {nan_count}"
+    )
+
+    print(
+        f"  Columns with NaN: {nan_columns}"
+    )
+
+    # -------------------------------------------------------------------------
+    # IMPORTANT:
+    # Fit the imputer ONLY on X_train.
+    # Never calculate imputation statistics from X_test.
+    # -------------------------------------------------------------------------
+
+    imputer = SimpleImputer(
+        strategy="median"
+    )
+
+    imputer.fit(X_train)
+
+    X_test_imputed = imputer.transform(
+        X_test
+    )
+
+    # Preserve the original DataFrame structure expected by MLflow/sklearn.
+    X_test_imputed = pd.DataFrame(
+        X_test_imputed,
+        columns=X_test.columns,
+        index=X_test.index,
+    )
+
+    remaining_nan_count = int(
+        X_test_imputed.isna().sum().sum()
+    )
+
+    if remaining_nan_count > 0:
+        raise RuntimeError(
+            "NaN values remain after Logistic Regression "
+            f"imputation: {remaining_nan_count}"
+        )
+
+    print(
+        "  ✓ Logistic Regression test data imputed "
+        "using X_train medians."
+    )
+
+    return X_test_imputed
 # =============================================================================
 # ENTRY POINT
 # =============================================================================
