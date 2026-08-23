@@ -50,7 +50,7 @@ experiment_name = get_experiment_name("p1")
 
 with mlflow_run(
     experiment_name,
-    run_name = "rf_tuned_v4"
+    run_name = "rf_tuned_v6"
 
 ):
     #Dataset information
@@ -74,16 +74,26 @@ with mlflow_run(
     print("[6/7] Training and evaluating model...")
     model = RandomForestClassifier(n_estimators=100,
                                    random_state=42,
-                                   class_weight="balanced")
+                                   class_weight={
+                                    "admin": 1.0,
+                                    "coLeader": 1.0,
+                                    "leader": 3.0,
+                                    "member": 1.0
+                                    },)
     
     #Model hyperparameters
     log_model_params(
        {
         "n_estimators":100,
         "random_state":42,
-        "class_weight":"balanced"
-       }
-    )
+        "class_weight": {
+            "admin": 1.0,
+            "coLeader": 1.0,
+            "leader": 3.0,
+            "member": 1.0
+        }
+         }
+        )
     
     #Training
     model = RandomForestClassifier(n_estimators=100, random_state=42)
