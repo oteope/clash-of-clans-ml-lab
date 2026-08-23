@@ -246,7 +246,7 @@ def log_model_and_artifacts(
                     color="w",
                 )
         # Use log_figure to store the figure as a stable artifact file.
-        mlflow.log_figure(fig, "confusion_matrix.png", artifact_path="artifacts")
+        mlflow.log_figure(fig, "artifacts/confusion_matrix.png")
         plt.close(fig)
 
     if extra_artifacts:

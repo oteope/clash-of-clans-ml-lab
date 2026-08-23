@@ -18,6 +18,8 @@ from mlflow_tracking.tracking_utils import (
 )
 from mlflow_tracking.experiments import get_experiment_name
 from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import classification_report
 
 # Load the dataset
 print("[1/7] Loading dataset...")
@@ -51,7 +53,7 @@ experiment_name = get_experiment_name("p1")
 
 with mlflow_run(
     experiment_name,
-    run_name = "Xgboost_tuned_v1",
+    run_name = "Xgboost_tuned_v3",
 ):
     
     #Loading the dataset
@@ -90,28 +92,62 @@ with mlflow_run(
     #Prediction
     y_pred = model.predict(X_test)
     
+    #Confusion Matrix
+    cm = confusion_matrix(y_test, y_pred)
+    
     # Convert predictions back to original labels
     y_pred_labels = label_encoder.inverse_transform(y_pred.astype(int))
     
-    #Metrics
+     #Metrics
+    report = classification_report(
+            y_test,
+            y_pred,
+            labels=["admin", "coLeader", "leader", "member"],
+            output_dict=True,
+            zero_division=0,
+        )
+            
     metrics = {
-    "accuracy": accuracy_score(y_test, y_pred),
-
-    "f1_weighted": f1_score(y_test, y_pred, average="weighted"),
-    "precision_weighted": precision_score(y_test, y_pred, average="weighted"),
-    "recall_weighted": recall_score(y_test, y_pred, average="weighted"),
-
-    "f1_macro": f1_score(y_test, y_pred, average="macro"),
-    "precision_macro": precision_score(y_test, y_pred, average="macro"),
-    "recall_macro": recall_score(y_test, y_pred, average="macro"),
-}
+                # Globals
+                "accuracy": accuracy_score(y_test, y_pred),
+        
+                # Weighted
+                "f1_weighted": f1_score(y_test, y_pred, average="weighted"),
+                "precision_weighted": precision_score(y_test, y_pred, average="weighted"),
+                 "recall_weighted": recall_score(y_test, y_pred, average="weighted"),
+        
+                # Macro
+                "f1_macro": f1_score(y_test, y_pred, average="macro"),
+                "precision_macro": precision_score(y_test, y_pred, average="macro"),
+                "recall_macro": recall_score(y_test, y_pred, average="macro"),
+        
+                # Per class
+                "admin_precision": report["admin"]["precision"],
+                "admin_recall": report["admin"]["recall"],
+                "admin_f1": report["admin"]["f1-score"],
+        
+                "coLeader_precision": report["coLeader"]["precision"],
+                "coLeader_recall": report["coLeader"]["recall"],
+                "coLeader_f1": report["coLeader"]["f1-score"],
+        
+                "leader_precision": report["leader"]["precision"],
+                "leader_recall": report["leader"]["recall"],
+                "leader_f1": report["leader"]["f1-score"],
+        
+                "member_precision": report["member"]["precision"],
+                "member_recall": report["member"]["recall"],
+                "member_f1": report["member"]["f1-score"],
+            }
     
     #Save metrics
     log_metrics(metrics)
     
     #Save model
-    log_model_and_artifacts(model)
-    
+    log_model_and_artifacts(
+        model,
+        confusion_matrix=cm,
+        class_names=["admin", "coLeader", "leader", "member"],
+        )
     print("[7/7] MLflow run completed successfully!")
 
 print("✓ Training pipeline finished.")
