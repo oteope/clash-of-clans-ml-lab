@@ -54,7 +54,7 @@ experiment_name = get_experiment_name("p1")
 
 with mlflow_run(
     experiment_name,
-    run_name = "Xgboost_tuned_v6",
+    run_name = "Xgboost_tuned_v9",
 ):
     
     #Loading the dataset
@@ -76,8 +76,13 @@ with mlflow_run(
     
     #Model
     sample_weights = compute_sample_weight(
-        class_weight="balanced",
-        y=y_train,
+        class_weight={
+            0: 1.0,
+            1: 1.0,
+            2: 1.5,
+            3: 1.0
+        },
+     y=y_train
     )
 
     print("[6/7] Training and evaluating model...")
@@ -85,8 +90,8 @@ with mlflow_run(
     model = xgb.XGBClassifier(n_estimators=500,
                               random_state=42,
                               learning_rate=0.1,
-                              max_depth=6,
-                              min_child_weight=3,) 
+                              max_depth=4,
+                              min_child_weight=1,) 
     
     #Model hyperparameters
     log_model_params(
@@ -94,8 +99,8 @@ with mlflow_run(
         "n_estimators":500,
         "random_state":42,
         "learning_rate":0.1,
-        "max_depth":6,
-        "min_child_weight":3
+        "max_depth":4,
+        "min_child_weight":1
        }
     )
     

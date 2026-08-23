@@ -50,7 +50,7 @@ experiment_name = get_experiment_name("p1")
 
 with mlflow_run(
     experiment_name,
-    run_name = "rf_tuned_v6"
+    run_name = "rf_tuned_v7"
 
 ):
     #Dataset information
@@ -77,7 +77,7 @@ with mlflow_run(
                                    class_weight={
                                     "admin": 1.0,
                                     "coLeader": 1.0,
-                                    "leader": 3.0,
+                                    "leader": 4.0,
                                     "member": 1.0
                                     },)
     
@@ -89,14 +89,13 @@ with mlflow_run(
         "class_weight": {
             "admin": 1.0,
             "coLeader": 1.0,
-            "leader": 3.0,
+            "leader": 4.0,
             "member": 1.0
         }
          }
         )
     
     #Training
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
     model.fit(X_train, y_train)
     
     #Prediction
