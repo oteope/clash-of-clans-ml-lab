@@ -52,11 +52,6 @@ XGBOOST_RUN_ID = "11a727b624134920896bfefffc5abc90"
 RF_RUN_ID = "40c9a36cbdd044fe83899ac0f8694178"
 LOGISTIC_RUN_NAME = "logistic_regression_tuned_v3"
 
-# Default split values used only if the original training configuration cannot
-# be recovered from the MLflow runs.
-DEFAULT_TEST_SIZE = 0.2
-DEFAULT_RANDOM_STATE = 42
-
 
 def _find_run_id_by_name(name: str) -> str:
     """Return the run_id for a run whose MLflow run name is ``name``.
@@ -94,130 +89,142 @@ def _load_model_from_run(run_id: str):
     return mlflow.pyfunc.load_model(model_uri)
 
 
-def _extract_split_params_from_runs(run_ids: List[str]) -> Tuple[float, int, bool]:
-    """Return test_size and random_state from the MLflow runs if available.
+def _parse_preprocessing_config(params: Dict[str, str]) -> Dict[str, Any]:
+    """Extract and parse the preprocessing_config parameter from a run.
 
-    If the parameters are not present or inconsistent, the default split
-    parameters are returned along with a flag indicating fallback was used.
+    The project logs this parameter via ``log_split_config`` as a JSON string.
+    """
+    raw = params.get("preprocessing_config")
+    if raw is None:
+        raise RuntimeError(
+            "The MLflow run does not contain a 'preprocessing_config' parameter. "
+            "Unable to recover the exact data preprocessing configuration."
+        )
+
+    try:
+        config = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(
+            "The 'preprocessing_config' parameter is not valid JSON: " + str(raw)
+        ) from exc
+
+    if not isinstance(config, dict):
+        raise RuntimeError(
+            "The 'preprocessing_config' parameter must be a JSON object."
+        )
+
+    return config
+
+
+def _get_test_size_from_config(config: Dict[str, Any]) -> float:
+    """Return test_size from a preprocessing configuration dict.
+
+    The config may store the value directly, inside a nested ``split`` dict,
+    or through common aliases.  Raises if it cannot be found.
+    """
+    possible_direct_keys = ("test_size", "test_ratio", "test_fraction")
+    for key in possible_direct_keys:
+        if key in config:
+            try:
+                return float(config[key])
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    f"Invalid test_size value in preprocessing_config: {config[key]}"
+                ) from exc
+
+    # Check nested 'split' or 'data_split' sections.
+    for nested_key in ("split", "data_split", "train_test_split"):
+        nested = config.get(nested_key)
+        if isinstance(nested, dict):
+            for key in possible_direct_keys:
+                if key in nested:
+                    try:
+                        return float(nested[key])
+                    except (TypeError, ValueError) as exc:
+                        raise RuntimeError(
+                            f"Invalid test_size value in preprocessing_config "
+                            f"under '{nested_key}': {nested[key]}"
+                        ) from exc
+
+    raise RuntimeError(
+        "The 'preprocessing_config' parameter does not contain test_size. "
+        "Unable to recover the exact train/test split."
+    )
+
+
+def _get_random_state_from_params(params: Dict[str, str]) -> int:
+    """Return random_state from common MLflow parameter names."""
+    for key in ("random_seed", "seed", "random_state", "random_state_seed"):
+        if key in params:
+            try:
+                return int(params[key])
+            except (TypeError, ValueError) as exc:
+                raise RuntimeError(
+                    f"Invalid random_state value in parameter '{key}': {params[key]}"
+                ) from exc
+
+    raise RuntimeError(
+        "The MLflow run does not contain random_seed/seed/random_state. "
+        "Unable to recover the exact train/test split."
+    )
+
+
+def _get_consistent_run_config(run_ids: List[str]) -> Tuple[float, int, Dict[str, Any]]:
+    """Retrieve and validate split/preprocessing config across all runs.
+
+    Raises if any required parameter is missing or if the runs disagree.
+    Returns (test_size, random_state, preprocessing_config).
     """
     client = mlflow.tracking.MlflowClient()
-    test_sizes = []
-    random_states = []
-    found_test_count = 0
-    found_random_count = 0
+
+    test_sizes: List[float] = []
+    random_states: List[int] = []
+    configs: List[Dict[str, Any]] = []
 
     for rid in run_ids:
         run = client.get_run(rid)
         params = run.data.params
 
-        # ------------------------------------------------------------------
-        # Extract random state
-        # ------------------------------------------------------------------
-        random_state = None
-        for key in ("random_seed", "seed", "random_state", "random_state_seed"):
-            if key in params:
-                try:
-                    random_state = int(params[key])
-                    break
-                except (TypeError, ValueError):
-                    random_state = None
-        if random_state is not None:
-            random_states.append(random_state)
-            found_random_count += 1
+        random_state = _get_random_state_from_params(params)
+        config = _parse_preprocessing_config(params)
+        test_size = _get_test_size_from_config(config)
 
-        # ------------------------------------------------------------------
-        # Extract test size
-        # ------------------------------------------------------------------
-        test_size = None
-        # Direct params
-        for key in ("test_size", "split_test_size", "test_ratio", "test_fraction"):
-            if key in params:
-                try:
-                    test_size = float(params[key])
-                    break
-                except (TypeError, ValueError):
-                    test_size = None
+        test_sizes.append(test_size)
+        random_states.append(random_state)
+        configs.append(config)
 
-        # Try to parse preprocessing_config if it exists and contains test info
-        if test_size is None and "preprocessing_config" in params:
-            try:
-                config = json.loads(params["preprocessing_config"])
-            except (TypeError, json.JSONDecodeError):
-                config = None
-            if isinstance(config, dict):
-                # Search common test-size keys recursively at one level
-                for key, value in config.items():
-                    if any(
-                        token in key.lower()
-                        for token in ("test_size", "test_ratio", "test_fraction")
-                    ):
-                        try:
-                            test_size = float(value)
-                            break
-                        except (TypeError, ValueError):
-                            test_size = None
-                # Also look for a nested 'split' dict
-                if test_size is None and "split" in config and isinstance(config["split"], dict):
-                    split_cfg = config["split"]
-                    for key, value in split_cfg.items():
-                        if any(
-                            token in key.lower()
-                            for token in ("test_size", "test_ratio")
-                        ):
-                            try:
-                                test_size = float(value)
-                                break
-                            except (TypeError, ValueError):
-                                test_size = None
-
-        if test_size is not None:
-            test_sizes.append(test_size)
-            found_test_count += 1
-
-    # ----------------------------------------------------------------------
-    # Decide what to return based on recovered values
-    # ----------------------------------------------------------------------
-    has_consistent_test = (
-        found_test_count == len(run_ids) and len(set(test_sizes)) == 1
-    )
-    has_consistent_random = (
-        found_random_count == len(run_ids) and len(set(random_states)) == 1
-    )
-
-    if has_consistent_test and has_consistent_random:
-        return test_sizes[0], random_states[0], False
-
-    # If one of the two is missing for some runs, try to fall back partially.
-    # We require random_state for all; otherwise we cannot guarantee the split.
-    if not has_consistent_random:
-        print(
-            "Warning: random_state could not be recovered consistently from "
-            "MLflow runs. Falling back to default random_state=42. This may "
-            "produce a different test split than the original experiments."
+    if len(set(test_sizes)) != 1:
+        raise RuntimeError(
+            "The MLflow runs contain inconsistent test_size values: "
+            f"{test_sizes}"
         )
-        random_state = DEFAULT_RANDOM_STATE
-    else:
-        random_state = random_states[0]
 
-    if not has_consistent_test:
-        print(
-            "Warning: test_size could not be recovered consistently from "
-            "MLflow runs. Falling back to default test_size=0.2. This may "
-            "produce a different test split than the original experiments."
+    if len(set(random_states)) != 1:
+        raise RuntimeError(
+            "The MLflow runs contain inconsistent random_state values: "
+            f"{random_states}"
         )
-        test_size = DEFAULT_TEST_SIZE
-    else:
-        test_size = test_sizes[0]
 
-    return test_size, random_state, True
+    # Ensure the relevant parts of the configs match; use the first run's
+    # config as canonical.
+    canonical_config = configs[0]
+    for idx, cfg in enumerate(configs[1:], start=1):
+        if cfg != canonical_config:
+            # Allow differences in non-relevant keys, but any difference that
+            # affects preprocessing or split must be caught above.
+            # Here we compare the full dicts to be conservative.
+            raise RuntimeError(
+                "The MLflow runs contain different preprocessing_config values."
+            )
+
+    return test_sizes[0], random_states[0], canonical_config
 
 
 def _build_dataset() -> pd.DataFrame:
     """Build the P1 dataset using the existing project pipeline.
 
     This function deliberately reuses the project's own functions and file
-    layout.  No new split is created here; the split is performed externally
-    and configured by the MLflow training configuration.
+    layout.  No new split is created here.
     """
     small_tables = load_small_tables()
     clans_df = small_tables["clans"]
@@ -238,15 +245,39 @@ def _build_dataset() -> pd.DataFrame:
     return dataset
 
 
+def _select_categorical_columns(
+    features: pd.DataFrame,
+    config: Dict[str, Any],
+) -> List[str]:
+    """Return columns that need categorical encoding.
+
+    Prefer explicit values from the preprocessing config.  If absent, fall
+    back to all object columns in the feature matrix.
+    """
+    for key in ("categorical_cols", "categorical_features", "categorical_columns"):
+        if key in config:
+            raw_cols = config[key]
+            if isinstance(raw_cols, list):
+                # Keep only existing columns.
+                return [c for c in raw_cols if c in features.columns]
+            raise RuntimeError(
+                f"'{key}' in preprocessing_config must be a list of column names."
+            )
+
+    # Fallback: all object columns that are not identifiers.
+    return list(features.select_dtypes(include="object").columns)
+
+
 def _get_train_test_split(
     test_size: float,
     random_state: int,
+    preprocessing_config: Dict[str, Any],
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series, pd.Series]:
     """Return X_train, X_test, y_train, y_test.
 
-    The split is performed using the parameters recovered from the MLflow
-    training runs.  This is not an independent split; it reuses the same
-    test_size and random_state that were used during model training.
+    The split is performed after applying the same categorical encoding used
+    during training, as recovered from MLflow.  Identifiers are removed before
+    encoding.
     """
     dataset = _build_dataset()
 
@@ -257,6 +288,15 @@ def _get_train_test_split(
     for id_col in ("player_tag", "clan_tag"):
         if id_col in features.columns:
             features = features.drop(columns=[id_col])
+
+    # Determine and apply categorical encoding.
+    categorical_cols = _select_categorical_columns(features, preprocessing_config)
+    if categorical_cols:
+        features = pd.get_dummies(
+            features,
+            columns=categorical_cols,
+            drop_first=True,
+        )
 
     X_train, X_test, y_train, y_test = train_test_split(
         features,
@@ -415,16 +455,13 @@ def main() -> None:
     rf_model = _load_model_from_run(RF_RUN_ID)
     logreg_model = _load_model_from_run(logistic_run_id)
 
-    # Recover the split parameters that were used to train the original models.
-    test_size, random_state, used_fallback = _extract_split_params_from_runs(run_ids)
-    if used_fallback:
-        print(
-            "Warning: falling back to default test_size=0.2 and/or random_state=42 "
-            "because the MLflow runs did not contain consistent split parameters."
-        )
+    # Recover the exact split and preprocessing configuration from MLflow.
+    test_size, random_state, preprocessing_config = _get_consistent_run_config(run_ids)
 
     # Reuse the project's existing pipeline and split.
-    _, X_test, _, y_test = _get_train_test_split(test_size, random_state)
+    _, X_test, _, y_test = _get_train_test_split(
+        test_size, random_state, preprocessing_config
+    )
 
     models = {
         "xgboost": xgb_model,
