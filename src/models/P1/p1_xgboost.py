@@ -20,6 +20,7 @@ from mlflow_tracking.experiments import get_experiment_name
 from sklearn.preprocessing import LabelEncoder
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import classification_report
+from sklearn.utils.class_weight import compute_sample_weight
 
 # Load the dataset
 print("[1/7] Loading dataset...")
@@ -53,7 +54,7 @@ experiment_name = get_experiment_name("p1")
 
 with mlflow_run(
     experiment_name,
-    run_name = "Xgboost_tuned_v3",
+    run_name = "Xgboost_tuned_v4",
 ):
     
     #Loading the dataset
@@ -74,9 +75,15 @@ with mlflow_run(
     )
     
     #Model
+    sample_weights = compute_sample_weight(
+        class_weight="balanced",
+        y=y_train,
+    )
+
     print("[6/7] Training and evaluating model...")
+    
     model = xgb.XGBClassifier(n_estimators=100,
-                              random_state=42) 
+                              random_state=42,) 
     
     #Model hyperparameters
     log_model_params(
@@ -87,7 +94,9 @@ with mlflow_run(
     )
     
     #Model training
-    model.fit(X_train,y_train)
+    model.fit(X_train,
+              y_train,
+              sample_weight=sample_weights,)
     
     #Prediction
     y_pred = model.predict(X_test)
@@ -100,12 +109,13 @@ with mlflow_run(
     
      #Metrics
     report = classification_report(
-            y_test,
-            y_pred,
-            labels=["admin", "coLeader", "leader", "member"],
-            output_dict=True,
-            zero_division=0,
-        )
+        y_test,
+        y_pred,
+        labels=[0, 1, 2, 3],
+        target_names=["admin", "coLeader", "leader", "member"],
+        output_dict=True,
+        zero_division=0,
+)
             
     metrics = {
                 # Globals

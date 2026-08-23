@@ -59,7 +59,7 @@ experiment_name = get_experiment_name("p1")
 
 with mlflow_run(
     experiment_name,
-    run_name="logistic_regression_tuned_v3",
+    run_name="logistic_regression_tuned_v4",
 ):
 
     # Dataset information
@@ -85,7 +85,8 @@ with mlflow_run(
         ("scaler", StandardScaler()),
         ("classifier", LogisticRegression(
             max_iter=1000,
-            random_state=42
+            random_state=42,
+            class_weight="balanced",
         ))
     ])
 
@@ -94,6 +95,7 @@ with mlflow_run(
         "max_iter": 1000,
         "random_state": 42,
         "scaler": "StandardScaler",
+        "class_weight":"balanced"
     })
 
     # Training
