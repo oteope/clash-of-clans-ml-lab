@@ -176,16 +176,20 @@ def log_dataset_context(
 
 def log_split_config(
     split_strategy: str,
-    grouping_col: Optional[str],
+    test_size: float,
     random_seed: int,
-    preprocessing_config: Dict[str, Any],
+    grouping_col: Optional[str] = None,
+    preprocessing_config: Optional[Dict[str, Any]] = None,
 ) -> None:
-    """Log data split and preprocessing configuration."""
     mlflow.log_params({
         "split_strategy": split_strategy,
-        "grouping_col": grouping_col or "none",
+        "test_size": test_size,
         "random_seed": random_seed,
-        "preprocessing_config": json.dumps(preprocessing_config, sort_keys=True),
+        "grouping_col": grouping_col or "none",
+        "preprocessing_config": json.dumps(
+            preprocessing_config or {},
+            sort_keys=True
+        ),
     })
 
 def log_model_params(params: Dict[str, Any]) -> None:
