@@ -51,7 +51,7 @@ experiment_name = get_experiment_name("p2")
 
 with mlflow_run(
     experiment_name,
-    run_name = "RF baseline - with trophies"
+    run_name = "RF v1 - with trophies"
 ):
     #Logging the dataset context
     log_dataset_context(
@@ -69,14 +69,18 @@ with mlflow_run(
     )
     
     #Model
-    model = RandomForestRegressor(random_state=42,
-                                   n_estimators=100,)
+    model = RandomForestRegressor(
+            n_estimators=200,
+            n_jobs=-1,
+            random_state=42,
+            )
     
     #Logging model parameters
     log_model_params({
         "random_state":42,
         "n_estimators":100,
-    })
+        "n_jobs": -1
+        })
     
     
     #Training the model
