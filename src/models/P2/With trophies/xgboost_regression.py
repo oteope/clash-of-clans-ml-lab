@@ -68,14 +68,19 @@ with mlflow_run(
     )
     
     #Model
-    model = xgb.XGBRegressor(  n_estimators = 500,
-                                    random_state=42,
-                                  )
+    model = xgb.XGBRegressor(
+        n_estimators=500,
+        learning_rate=0.05,
+        max_depth=6,
+        random_state=42,
+    )
     
     #Logging model parameters
     log_model_params({
         "n_estimators":500,
         "random_state":42,
+        "learning_rate":0.05,
+        "max_depth":6,
     })
     
     #Training
