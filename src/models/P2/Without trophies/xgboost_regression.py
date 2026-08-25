@@ -119,7 +119,7 @@ def objective(trial):
 
     with mlflow_run(
         experiment_name,
-        run_name = f"Optuna Trial {trial.number}"
+        run_name = f"XGBoost Optuna Trial {trial.number} - without trophies"
     ):
     
         log_model_params({
