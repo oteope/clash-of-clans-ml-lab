@@ -77,6 +77,7 @@ experiment_name = get_experiment_name("p2")
 def objective(trial):
     params = {
         "n_estimators": trial.suggest_int(
+            "n_estimators",
             300,
             1000,
             step=100,
