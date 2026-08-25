@@ -41,6 +41,7 @@ X_train, X_test, y_train, y_test = train_test_split(X,
 
 
 #Mlflow experiment
+configure_tracking()
 experiment_name = get_experiment_name("p2")
 
 with mlflow_run(

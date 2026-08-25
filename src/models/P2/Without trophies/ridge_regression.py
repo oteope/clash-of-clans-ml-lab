@@ -17,6 +17,7 @@ from mlflow_tracking.experiments import get_experiment_name
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+from sklearn.impute import SimpleImputer
 
 #Loading the dataset
 DATASET_PATH = "data/datasets/clan_rank_regression_without_trophies.parquet"
@@ -46,6 +47,7 @@ X_train, X_test, y_train, y_test = train_test_split(
                                                 )
 
 #Mlflow experiment
+configure_tracking()
 experiment_name = get_experiment_name("p2")
 
 with mlflow_run(
@@ -72,12 +74,14 @@ with mlflow_run(
     
     #Model
     model = Pipeline([
-       ("scaler", StandardScaler()),
-       ("ridge", Ridge(alpha = 1.0))
-    ])
+        ("imputer", SimpleImputer(strategy="median")),
+        ("scaler", StandardScaler()),
+        ("ridge", Ridge(alpha=1.0)),
+        ])
     
     #Logging model parameters
     log_model_params({
+        "imputer":"strategy=median",
         "scaler":"StandardScaler",
         "alpha":1.0,
     })
