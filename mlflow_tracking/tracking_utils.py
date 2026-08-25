@@ -212,9 +212,16 @@ def log_model_and_artifacts(
 
     # Select the appropriate MLflow model flavor
     if isinstance(model, xgb.XGBModel):
-        mlflow.xgboost.log_model(model, artifact_path)
+        mlflow.xgboost.log_model(
+            model,
+            artifact_path=artifact_path,
+        )
     else:
-        mlflow.sklearn.log_model(model, artifact_path)
+        mlflow.sklearn.log_model(
+            model,
+            artifact_path=artifact_path,
+            serialization_format="pickle",
+        )
 
     if confusion_matrix is not None:
         try:
@@ -231,6 +238,7 @@ def log_model_and_artifacts(
         fig, ax = plt.subplots(figsize=(8, 6))
         im = ax.imshow(confusion_matrix, cmap="Blues")
         fig.colorbar(im, ax=ax)
+
         ax.set(
             xticks=range(len(class_names)),
             yticks=range(len(class_names)),
@@ -239,6 +247,7 @@ def log_model_and_artifacts(
             ylabel="Actual",
             xlabel="Predicted",
         )
+
         for i in range(len(class_names)):
             for j in range(len(class_names)):
                 ax.text(
@@ -249,13 +258,20 @@ def log_model_and_artifacts(
                     va="center",
                     color="w",
                 )
-        # Use log_figure to store the figure as a stable artifact file.
-        mlflow.log_figure(fig, "artifacts/confusion_matrix.png")
+
+        mlflow.log_figure(
+            fig,
+            "artifacts/confusion_matrix.png",
+        )
+
         plt.close(fig)
 
     if extra_artifacts:
-        for local_path, artifact_path in extra_artifacts.items():
-            mlflow.log_artifact(local_path, artifact_path)
+        for local_path, artifact_subpath in extra_artifacts.items():
+            mlflow.log_artifact(
+                local_path,
+                artifact_subpath,
+            )
 
 @contextmanager
 def mlflow_run(experiment_name: str, run_name: Optional[str] = None):
