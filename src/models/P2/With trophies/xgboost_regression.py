@@ -50,7 +50,7 @@ experiment_name = get_experiment_name("p2")
 
 with mlflow_run(
     experiment_name,
-    run_name = "V1XGBoost regression baseline - with trophies"
+    run_name = "V2 XGBoost regression- with trophies"
 ):
     #Logging the dataset context
     log_dataset_context(
@@ -69,7 +69,7 @@ with mlflow_run(
     
     #Model
     model = xgb.XGBRegressor(
-        n_estimators=500,
+        n_estimators=750,
         learning_rate=0.05,
         max_depth=6,
         random_state=42,
@@ -77,7 +77,7 @@ with mlflow_run(
     
     #Logging model parameters
     log_model_params({
-        "n_estimators":500,
+        "n_estimators":750,
         "random_state":42,
         "learning_rate":0.05,
         "max_depth":6,
