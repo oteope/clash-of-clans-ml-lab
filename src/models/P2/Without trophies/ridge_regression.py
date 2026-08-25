@@ -52,7 +52,7 @@ experiment_name = get_experiment_name("p2")
 
 with mlflow_run(
     experiment_name,
-    run_name = "Ridge regression baseline - without trophies"
+    run_name = "v1 Ridge regression baseline - without trophies"
 ):
     #Dataset information
     log_dataset_context(
@@ -76,14 +76,14 @@ with mlflow_run(
     model = Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
         ("scaler", StandardScaler()),
-        ("ridge", Ridge(alpha=1.0)),
+        ("ridge", Ridge(alpha=0.1)),
         ])
     
     #Logging model parameters
     log_model_params({
         "imputer":"strategy=median",
         "scaler":"StandardScaler",
-        "alpha":1.0,
+        "alpha":0.1,
     })
     
     #Training the model

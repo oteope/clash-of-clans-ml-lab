@@ -50,7 +50,7 @@ experiment_name = get_experiment_name("p2")
 
 with mlflow_run(
     experiment_name,
-    run_name = "XGBoost regression baseline - with trophies"
+    run_name = "V1XGBoost regression baseline - with trophies"
 ):
     #Logging the dataset context
     log_dataset_context(
