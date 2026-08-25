@@ -51,7 +51,7 @@ with mlflow_run(
     )
     
     #Model
-    model = xgb.XGBRegression(  n_estimators = 500,
+    model = xgb.XGBRegressor(  n_estimators = 500,
                                     random_state=42,
                                   )
     
