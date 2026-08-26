@@ -1,15 +1,13 @@
 import sys
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Tuple
 
 import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import mlflow
-import mlflow.sklearn
-import mlflow.xgboost
 import numpy as np
 import pandas as pd
 
@@ -36,11 +34,31 @@ if str(ROOT_DIR) not in sys.path:
 # =============================================================================
 
 from mlflow_tracking.tracking_utils import configure_tracking
-from mlflow_tracking.experiments import get_experiment_name
 
 
 # =============================================================================
-# CONSTANTS
+# CONFIGURATION
+# =============================================================================
+
+MODEL_RUN_IDS = {
+    "with_trophies": {
+        "xgboost": None,
+        "random_forest": None,
+        "ridge": None,
+        "linear_regression": None,
+    },
+
+    "without_trophies": {
+        "xgboost": None,
+        "random_forest": None,
+        "ridge": None,
+        "linear_regression": None,
+    },
+}
+
+
+# =============================================================================
+# GENERAL CONFIGURATION
 # =============================================================================
 
 RESULTS_DIR = ROOT_DIR / "src" / "results" / "P2"
@@ -66,266 +84,74 @@ DEFAULT_RANDOM_STATE = 42
 
 
 # =============================================================================
-# MODEL DISCOVERY
-# =============================================================================
-#
-# El script intenta localizar automáticamente los últimos runs de cada modelo.
-#
-# Si tus nombres de MLflow contienen estas palabras, no necesitas introducir
-# manualmente los run IDs.
-#
-# Se buscan:
-#
-#   XGBoost
-#   Random Forest
-#   Ridge
-#   Linear Regression
-#
-# para cada una de las dos variantes del dataset.
-#
+# MODEL DISPLAY NAMES
 # =============================================================================
 
-MODEL_PATTERNS = {
-    "xgboost": [
-        "xgboost",
-        "xgb",
-    ],
-    "random_forest": [
-        "random_forest",
-        "random forest",
-        "randomforest",
-        "rf",
-    ],
-    "ridge": [
-        "ridge",
-    ],
-    "linear_regression": [
-        "linear_regression",
-        "linear regression",
-        "linearregression",
-        "ols",
-    ],
+MODEL_DISPLAY_NAMES = {
+    "xgboost": "xgboost",
+    "random_forest": "random_forest",
+    "ridge": "ridge",
+    "linear_regression": "linear_regression",
 }
 
 
 # =============================================================================
-# DATASET VARIANT IDENTIFICATION
+# VALIDATE RUN CONFIGURATION
 # =============================================================================
 
-WITH_TROPHIES_PATTERNS = [
-    "with_trophies",
-    "with trophies",
-    "with-trophies",
-    "trophies",
-]
-
-WITHOUT_TROPHIES_PATTERNS = [
-    "without_trophies",
-    "without trophies",
-    "without-trophies",
-    "no_trophies",
-    "no trophies",
-    "notrophies",
-    "trophy_free",
-    "trophy-free",
-]
-
-
-# =============================================================================
-# FIND MLflow RUNS
-# =============================================================================
-
-def _get_all_runs() -> pd.DataFrame:
+def _validate_run_configuration() -> None:
     """
-    Retrieve all MLflow runs.
+    Validate the manually configured MLflow Run IDs.
 
-    The project uses MLflow tracking infrastructure configured through
-    configure_tracking().
+    None values are allowed so that a model can simply be skipped.
     """
 
-    configure_tracking()
-
-    return mlflow.search_runs(
-        output_format="pandas",
-    )
-
-
-def _normalise_text(value: Any) -> str:
-    """
-    Convert arbitrary MLflow metadata to lowercase text.
-    """
-
-    if value is None:
-        return ""
-
-    if pd.isna(value):
-        return ""
-
-    return str(value).lower()
-
-
-def _run_text(run: pd.Series) -> str:
-    """
-    Build a searchable text representation of an MLflow run.
-
-    Run name, tags, parameters and experiment name are included.
-    """
-
-    pieces = []
-
-    for column in run.index:
-
-        if (
-            "run_name" in column
-            or "tags." in column
-            or "params." in column
-            or column == "experiment_name"
-        ):
-
-            pieces.append(
-                _normalise_text(run[column])
-            )
-
-    return " ".join(pieces)
-
-
-def _contains_any(
-    text: str,
-    patterns: List[str],
-) -> bool:
-    """
-    Return True if any pattern occurs in text.
-    """
-
-    return any(
-        pattern.lower() in text
-        for pattern in patterns
-    )
-
-
-def _identify_dataset_variant(
-    run: pd.Series,
-) -> Optional[str]:
-    """
-    Identify whether an MLflow run belongs to the trophy or trophy-free
-    dataset variant.
-
-    Returns:
-        'with_trophies'
-        'without_trophies'
-        None
-    """
-
-    text = _run_text(run)
-
-    # Check trophy-free FIRST because it also contains "trophies".
-    if _contains_any(
-        text,
-        WITHOUT_TROPHIES_PATTERNS,
-    ):
-        return "without_trophies"
-
-    if _contains_any(
-        text,
-        WITH_TROPHIES_PATTERNS,
-    ):
-        return "with_trophies"
-
-    return None
-
-
-def _identify_model(
-    run: pd.Series,
-) -> Optional[str]:
-    """
-    Identify model family from MLflow metadata.
-    """
-
-    text = _run_text(run)
-
-    # More specific patterns first.
-    for model_name, patterns in MODEL_PATTERNS.items():
-
-        if _contains_any(
-            text,
-            patterns,
-        ):
-            return model_name
-
-    return None
-
-
-def _find_latest_model_runs() -> Dict[str, Dict[str, str]]:
-    """
-    Automatically find the latest MLflow run for every model/dataset
-    combination.
-
-    Returns:
-
-        {
-            "with_trophies": {
-                "xgboost": "...",
-                "random_forest": "...",
-                ...
-            },
-            "without_trophies": {
-                ...
-            }
-        }
-
-    Runs are ordered by start_time and the newest matching run is selected.
-    """
-
-    runs = _get_all_runs()
-
-    if runs.empty:
-        raise RuntimeError(
-            "No MLflow runs were found."
-        )
-
-    if "start_time" in runs.columns:
-        runs = runs.sort_values(
-            "start_time",
-            ascending=False,
-        )
-
-    selected = {
-        "with_trophies": {},
-        "without_trophies": {},
+    valid_variants = {
+        "with_trophies",
+        "without_trophies",
     }
 
-    for _, run in runs.iterrows():
+    valid_models = {
+        "xgboost",
+        "random_forest",
+        "ridge",
+        "linear_regression",
+    }
 
-        variant = _identify_dataset_variant(
-            run
-        )
+    for variant, models in MODEL_RUN_IDS.items():
 
-        if variant is None:
-            continue
-
-        model_name = _identify_model(
-            run
-        )
-
-        if model_name is None:
-            continue
-
-        run_id = run.get(
-            "run_id"
-        )
-
-        if not run_id:
-            continue
-
-        # Because runs are sorted newest -> oldest,
-        # the first matching run is the newest one.
-        if model_name not in selected[variant]:
-
-            selected[variant][model_name] = str(
-                run_id
+        if variant not in valid_variants:
+            raise ValueError(
+                f"Invalid dataset variant in MODEL_RUN_IDS: {variant}"
             )
 
-    return selected
+        if not isinstance(models, dict):
+            raise ValueError(
+                f"Configuration for '{variant}' must be a dictionary."
+            )
+
+        for model_name, run_id in models.items():
+
+            if model_name not in valid_models:
+                raise ValueError(
+                    f"Invalid model '{model_name}' "
+                    f"in variant '{variant}'."
+                )
+
+            if run_id is None:
+                continue
+
+            if not isinstance(run_id, str):
+                raise ValueError(
+                    f"Run ID for '{variant}/{model_name}' "
+                    f"must be a string or None."
+                )
+
+            if not run_id.strip():
+                raise ValueError(
+                    f"Run ID for '{variant}/{model_name}' "
+                    f"cannot be an empty string."
+                )
 
 
 # =============================================================================
@@ -340,7 +166,6 @@ def _load_dataset(
     """
 
     if not path.exists():
-
         raise FileNotFoundError(
             f"Dataset not found: {path}"
         )
@@ -350,7 +175,6 @@ def _load_dataset(
     )
 
     if TARGET_COLUMN not in data.columns:
-
         raise RuntimeError(
             f"Target column '{TARGET_COLUMN}' "
             f"not found in dataset: {path}"
@@ -378,7 +202,6 @@ def _prepare_features(
         - boolean columns
 
     Numeric features are retained.
-
     """
 
     y = data[
@@ -408,7 +231,6 @@ def _prepare_features(
     ]
 
     if existing_to_remove:
-
         X = X.drop(
             columns=existing_to_remove
         )
@@ -422,7 +244,6 @@ def _prepare_features(
     ).columns.tolist()
 
     if object_columns:
-
         X = X.drop(
             columns=object_columns
         )
@@ -436,7 +257,6 @@ def _prepare_features(
     ).columns.tolist()
 
     if bool_columns:
-
         X = X.drop(
             columns=bool_columns
         )
@@ -459,7 +279,6 @@ def _prepare_features(
     ].tolist()
 
     if all_nan_columns:
-
         X = X.drop(
             columns=all_nan_columns
         )
@@ -501,6 +320,8 @@ def _load_model_from_run(
     Load a model from an MLflow run.
 
     The training scripts log the model under the 'model' artifact name.
+
+    Falls back to 'modelo' for compatibility with older runs.
     """
 
     model_uri = (
@@ -508,21 +329,17 @@ def _load_model_from_run(
     )
 
     try:
-
         return mlflow.pyfunc.load_model(
             model_uri
         )
 
     except Exception as first_error:
 
-        # Some project runs may have logged the model using the older
-        # 'modelo' artifact name.
         fallback_uri = (
             f"runs:/{run_id}/modelo"
         )
 
         try:
-
             return mlflow.pyfunc.load_model(
                 fallback_uri
             )
@@ -967,9 +784,18 @@ def main() -> None:
         + "\n"
     )
 
-    RESULTS_DIR.mkdir(
-        parents=True,
-        exist_ok=True,
+    # -------------------------------------------------------------------------
+    # Validate configuration
+    # -------------------------------------------------------------------------
+
+    print(
+        "[1/6] Validating MLflow Run ID configuration..."
+    )
+
+    _validate_run_configuration()
+
+    print(
+        "✓ Run configuration valid\n"
     )
 
     # -------------------------------------------------------------------------
@@ -977,7 +803,7 @@ def main() -> None:
     # -------------------------------------------------------------------------
 
     print(
-        "[1/6] Configuring MLflow..."
+        "[2/6] Configuring MLflow..."
     )
 
     configure_tracking()
@@ -987,36 +813,36 @@ def main() -> None:
     )
 
     # -------------------------------------------------------------------------
-    # Find models
+    # Show configured runs
     # -------------------------------------------------------------------------
 
     print(
-        "[2/6] Discovering P2 MLflow model runs..."
+        "Configured runs:"
     )
 
-    model_runs = _find_latest_model_runs()
-
-    print(
-        "\nDiscovered runs:"
-    )
-
-    for variant, models in model_runs.items():
+    for variant, models in MODEL_RUN_IDS.items():
 
         print(
             f"\n{variant}:"
         )
 
-        if not models:
-
-            print(
-                "  No models discovered."
-            )
+        configured_count = 0
 
         for model_name, run_id in models.items():
 
-            print(
-                f"  {model_name}: {run_id}"
-            )
+            if run_id is None:
+                print(
+                    f"  {model_name}: SKIPPED"
+                )
+            else:
+                print(
+                    f"  {model_name}: {run_id}"
+                )
+                configured_count += 1
+
+        print(
+            f"  Configured models: {configured_count}"
+        )
 
     print()
 
@@ -1029,14 +855,8 @@ def main() -> None:
     )
 
     datasets = {
-
-        "with_trophies": (
-            DATASET_WITH_TROPHIES
-        ),
-
-        "without_trophies": (
-            DATASET_WITHOUT_TROPHIES
-        ),
+        "with_trophies": DATASET_WITH_TROPHIES,
+        "without_trophies": DATASET_WITHOUT_TROPHIES,
     }
 
     all_metrics = []
@@ -1133,15 +953,33 @@ def main() -> None:
         )
 
         # ---------------------------------------------------------------------
-        # Evaluate models
+        # Get manually configured runs
         # ---------------------------------------------------------------------
 
-        variant_runs = model_runs.get(
+        variant_runs = MODEL_RUN_IDS.get(
             variant_name,
             {},
         )
 
+        # ---------------------------------------------------------------------
+        # Evaluate configured models
+        # ---------------------------------------------------------------------
+
         for model_key, run_id in variant_runs.items():
+
+            # Skip models without a Run ID
+            if run_id is None:
+
+                print(
+                    f"  Skipping {model_key}: "
+                    f"no Run ID configured."
+                )
+
+                continue
+
+            # -----------------------------------------------------------------
+            # Load model
+            # -----------------------------------------------------------------
 
             try:
 
@@ -1166,9 +1004,14 @@ def main() -> None:
 
                 continue
 
-            model_display_name = (
-                model_key
+            model_display_name = MODEL_DISPLAY_NAMES.get(
+                model_key,
+                model_key,
             )
+
+            # -----------------------------------------------------------------
+            # Evaluate
+            # -----------------------------------------------------------------
 
             try:
 
@@ -1186,6 +1029,10 @@ def main() -> None:
                 print(
                     f"\nWARNING: Could not evaluate "
                     f"{model_key} for {variant_name}."
+                )
+
+                print(
+                    f"  Run ID: {run_id}"
                 )
 
                 print(
@@ -1260,7 +1107,8 @@ def main() -> None:
     if not all_metrics:
 
         raise RuntimeError(
-            "No models were successfully evaluated."
+            "No models were successfully evaluated. "
+            "Check MODEL_RUN_IDS."
         )
 
     metrics_df = pd.DataFrame(
@@ -1269,6 +1117,7 @@ def main() -> None:
 
     # Best model first:
     # lower RMSE is better.
+
     metrics_df = metrics_df.sort_values(
         "rmse",
         ascending=True,
@@ -1372,7 +1221,7 @@ def main() -> None:
 
         "random_state": DEFAULT_RANDOM_STATE,
 
-        "models": model_runs,
+        "models": MODEL_RUN_IDS,
 
         "results": metrics_df[
             [
