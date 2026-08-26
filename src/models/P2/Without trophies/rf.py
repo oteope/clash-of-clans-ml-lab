@@ -46,7 +46,7 @@ experiment_name = get_experiment_name("p2")
 
 with mlflow_run(
     experiment_name,
-    run_name = "RF v1- without trophies"
+    run_name = "RF v2- without trophies"
 ):
     #Logging the dataset context
     log_dataset_context(
@@ -65,15 +65,25 @@ with mlflow_run(
     
     #Model
     model = RandomForestRegressor(
-                n_estimators=200,
-                n_jobs=-1,
-                random_state=42,
-                )
+            n_estimators=300,
+            max_depth=None,
+            min_samples_split=2,
+            min_samples_leaf=1,
+            max_features=1.0,
+            bootstrap=True,
+             random_state=42,
+            n_jobs=-1,
+        )
     
     #Logging model parameters
     log_model_params({
+            "max_depth":None,
+            "min_samples_split":2,
+            "min_samples_leaf":1,
+            "max_features":1.0,
+            "bootstrap":True,
             "random_state":42,
-            "n_estimators":100,
+            "n_estimators":300,
             "n_jobs": -1
             })
     
