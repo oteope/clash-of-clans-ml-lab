@@ -1,0 +1,46 @@
+{
+  "datasets": {
+    "with_trophies": "C:\\Users\\Usuario\\Desktop\\Clash of Clans ML Lab\\data\\datasets\\clan_rank_regression_with_trophies.parquet",
+    "without_trophies": "C:\\Users\\Usuario\\Desktop\\Clash of Clans ML Lab\\data\\datasets\\clan_rank_regression_without_trophies.parquet"
+  },
+  "test_size": 0.2,
+  "random_state": 42,
+  "models": {
+    "with_trophies": {
+      "xgboost": "83396bc7df4946b3bfd388b32afe8cb5",
+      "random_forest": "aa9291a0474b451b8d36b25e226aed5d",
+      "ridge": "83532504b72142088051285c008ae4f0"
+    },
+    "without_trophies": {
+      "xgboost": "bcb7d9873163449697ca75b2c1cbbba5",
+      "random_forest": "8eef95c1839443e2840c07737d2e2f4c",
+      "ridge": "575905e3512f4729acfb2b654e816de5"
+    }
+  },
+  "results": [
+    {
+      "variant": "with_trophies",
+      "model": "xgboost",
+      "mae": 2.0537209510803223,
+      "mse": 10.950904846191406,
+      "rmse": 3.30921514051163,
+      "r2": 0.9133673906326294
+    },
+    {
+      "variant": "without_trophies",
+      "model": "xgboost",
+      "mae": 2.5286738872528076,
+      "mse": 15.102999687194824,
+      "rmse": 3.88625779988858,
+      "r2": 0.880520224571228
+    },
+    {
+      "variant": "with_trophies",
+      "model": "ridge",
+      "mae": 4.499927383239596,
+      "mse": 34.873718677685396,
+      "rmse": 5.9053974191146015,
+      "r2": 0.7241140972444498
+    }
+  ]
+}

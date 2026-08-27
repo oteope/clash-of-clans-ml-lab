@@ -1,7 +1,8 @@
 import sys
 import json
+import gc
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Tuple
 
 import matplotlib
 matplotlib.use("Agg")
@@ -42,17 +43,15 @@ from mlflow_tracking.tracking_utils import configure_tracking
 
 MODEL_RUN_IDS = {
     "with_trophies": {
-        "xgboost": None,
-        "random_forest": None,
-        "ridge": None,
-        "linear_regression": None,
+        "xgboost": "83396bc7df4946b3bfd388b32afe8cb5",
+        "random_forest": "aa9291a0474b451b8d36b25e226aed5d",
+        "ridge": "83532504b72142088051285c008ae4f0",
     },
 
     "without_trophies": {
-        "xgboost": None,
-        "random_forest": None,
-        "ridge": None,
-        "linear_regression": None,
+        "xgboost": "bcb7d9873163449697ca75b2c1cbbba5",
+        "random_forest": "8eef95c1839443e2840c07737d2e2f4c",
+        "ridge": "575905e3512f4729acfb2b654e816de5",
     },
 }
 
@@ -91,7 +90,6 @@ MODEL_DISPLAY_NAMES = {
     "xgboost": "xgboost",
     "random_forest": "random_forest",
     "ridge": "ridge",
-    "linear_regression": "linear_regression",
 }
 
 
@@ -100,12 +98,6 @@ MODEL_DISPLAY_NAMES = {
 # =============================================================================
 
 def _validate_run_configuration() -> None:
-    """
-    Validate the manually configured MLflow Run IDs.
-
-    None values are allowed so that a model can simply be skipped.
-    """
-
     valid_variants = {
         "with_trophies",
         "without_trophies",
@@ -115,7 +107,6 @@ def _validate_run_configuration() -> None:
         "xgboost",
         "random_forest",
         "ridge",
-        "linear_regression",
     }
 
     for variant, models in MODEL_RUN_IDS.items():
@@ -150,7 +141,7 @@ def _validate_run_configuration() -> None:
             if not run_id.strip():
                 raise ValueError(
                     f"Run ID for '{variant}/{model_name}' "
-                    f"cannot be an empty string."
+                    f"cannot be empty."
                 )
 
 
@@ -161,18 +152,13 @@ def _validate_run_configuration() -> None:
 def _load_dataset(
     path: Path,
 ) -> pd.DataFrame:
-    """
-    Load one P2 regression dataset.
-    """
 
     if not path.exists():
         raise FileNotFoundError(
             f"Dataset not found: {path}"
         )
 
-    data = pd.read_parquet(
-        path
-    )
+    data = pd.read_parquet(path)
 
     if TARGET_COLUMN not in data.columns:
         raise RuntimeError(
@@ -190,32 +176,15 @@ def _load_dataset(
 def _prepare_features(
     data: pd.DataFrame,
 ) -> Tuple[pd.DataFrame, pd.Series]:
-    """
-    Prepare X and y for P2 regression.
 
-    Excluded:
-        - target
-        - player_tag
-        - clan_tag
-        - name
-        - object/string columns
-        - boolean columns
-
-    Numeric features are retained.
-    """
-
-    y = data[
-        TARGET_COLUMN
-    ].copy()
+    y = data[TARGET_COLUMN].copy()
 
     X = data.drop(
-        columns=[
-            TARGET_COLUMN
-        ]
+        columns=[TARGET_COLUMN]
     ).copy()
 
     # -------------------------------------------------------------------------
-    # Identifiers / non-modelling columns
+    # Remove identifiers
     # -------------------------------------------------------------------------
 
     columns_to_remove = [
@@ -236,33 +205,7 @@ def _prepare_features(
         )
 
     # -------------------------------------------------------------------------
-    # Remove object/string columns
-    # -------------------------------------------------------------------------
-
-    object_columns = X.select_dtypes(
-        include=["object", "string"]
-    ).columns.tolist()
-
-    if object_columns:
-        X = X.drop(
-            columns=object_columns
-        )
-
-    # -------------------------------------------------------------------------
-    # Remove boolean columns
-    # -------------------------------------------------------------------------
-
-    bool_columns = X.select_dtypes(
-        include=["bool"]
-    ).columns.tolist()
-
-    if bool_columns:
-        X = X.drop(
-            columns=bool_columns
-        )
-
-    # -------------------------------------------------------------------------
-    # Convert remaining columns to numeric
+    # Convert numeric-looking columns
     # -------------------------------------------------------------------------
 
     X = X.apply(
@@ -271,7 +214,26 @@ def _prepare_features(
     )
 
     # -------------------------------------------------------------------------
-    # Remove columns containing only NaN
+    # Boolean features
+    #
+    # Keep them exactly as modelling columns, converting them to integers.
+    # -------------------------------------------------------------------------
+
+    bool_columns = X.select_dtypes(
+        include=["bool"]
+    ).columns.tolist()
+
+    for column in bool_columns:
+        X[column] = (
+            X[column]
+            .fillna(False)
+            .astype(np.int8)
+        )
+
+    # -------------------------------------------------------------------------
+    # Columns that are completely NaN
+    #
+    # For the generated datasets, these are not useful modelling columns.
     # -------------------------------------------------------------------------
 
     all_nan_columns = X.columns[
@@ -283,30 +245,60 @@ def _prepare_features(
             columns=all_nan_columns
         )
 
+    # -------------------------------------------------------------------------
+    # Reduce memory usage.
+    #
+    # The models accept float32 input and this considerably reduces RAM
+    # consumption on the 837k-row datasets.
+    # -------------------------------------------------------------------------
+
+    for column in X.columns:
+
+        if pd.api.types.is_float_dtype(
+            X[column]
+        ):
+            X[column] = X[column].astype(
+                np.float32
+            )
+
+        elif pd.api.types.is_integer_dtype(
+            X[column]
+        ):
+            X[column] = X[column].astype(
+                np.float32
+            )
+
     return X, y
 
 
 # =============================================================================
-# TRAIN / TEST SPLIT
+# TEST SPLIT
 # =============================================================================
 
-def _get_split(
-    X: pd.DataFrame,
-    y: pd.Series,
+def _get_test_indices(
+    n_samples: int,
     test_size: float = DEFAULT_TEST_SIZE,
     random_state: int = DEFAULT_RANDOM_STATE,
-):
+) -> np.ndarray:
     """
-    Recreate the project train/test split.
+    Reproduce sklearn train_test_split without materializing X_train.
+
+    This is important for P2 because the datasets contain ~837k rows.
     """
 
-    return train_test_split(
-        X,
-        y,
+    indices = np.arange(
+        n_samples,
+        dtype=np.int32,
+    )
+
+    _, test_indices = train_test_split(
+        indices,
         test_size=test_size,
         random_state=random_state,
         stratify=None,
     )
+
+    return test_indices
 
 
 # =============================================================================
@@ -317,16 +309,16 @@ def _load_model_from_run(
     run_id: str,
 ):
     """
-    Load a model from an MLflow run.
+    Same basic MLflow loading strategy used by P1.
 
-    The training scripts log the model under the 'model' artifact name.
+    First:
+        runs:/<run_id>/model
 
-    Falls back to 'modelo' for compatibility with older runs.
+    Fallback:
+        runs:/<run_id>/modelo
     """
 
-    model_uri = (
-        f"runs:/{run_id}/model"
-    )
+    model_uri = f"runs:/{run_id}/model"
 
     try:
         return mlflow.pyfunc.load_model(
@@ -335,25 +327,180 @@ def _load_model_from_run(
 
     except Exception as first_error:
 
-        fallback_uri = (
-            f"runs:/{run_id}/modelo"
-        )
+        fallback_uri = f"runs:/{run_id}/modelo"
 
         try:
             return mlflow.pyfunc.load_model(
                 fallback_uri
             )
 
-        except Exception:
+        except Exception as second_error:
 
             raise RuntimeError(
-                f"Could not load model from run "
-                f"{run_id}.\n"
+                f"Could not load model from run {run_id}.\n"
                 f"Tried:\n"
                 f"  {model_uri}\n"
                 f"  {fallback_uri}\n"
-                f"Original error: {first_error}"
+                f"Original error: {first_error}\n"
+                f"Fallback error: {second_error}"
             )
+
+
+# =============================================================================
+# MODEL INPUT
+# =============================================================================
+
+def _prepare_model_input(
+    model_key: str,
+    model: Any,
+    X_test: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Prepare model input.
+
+    IMPORTANT:
+    P2 datasets are already generated in the exact feature order used
+    by the regression training pipeline.
+
+    Unlike the previous implementation, this function does NOT attempt
+    to recover feature names from the MLflow model.
+
+    P1 follows the same philosophy: the evaluation dataset is rebuilt
+    using the project's feature pipeline and then passed directly to
+    model.predict().
+    """
+
+    X_model = X_test.copy()
+
+    # -------------------------------------------------------------------------
+    # Validate model feature count when the underlying model exposes it.
+    # This does not require feature names.
+    # -------------------------------------------------------------------------
+
+    expected_count = None
+
+    # PyFunc -> underlying sklearn/xgboost implementation
+    candidates = [model]
+
+    try:
+        python_model = model.unwrap_python_model()
+
+        candidates.append(
+            python_model
+        )
+
+        inner_model = getattr(
+            python_model,
+            "model",
+            None,
+        )
+
+        if inner_model is not None:
+            candidates.append(
+                inner_model
+            )
+
+    except Exception:
+        pass
+
+    try:
+        impl = getattr(
+            model,
+            "_model_impl",
+            None,
+        )
+
+        if impl is not None:
+            candidates.append(
+                impl
+            )
+
+            inner_model = getattr(
+                impl,
+                "model",
+                None,
+            )
+
+            if inner_model is not None:
+                candidates.append(
+                    inner_model
+                )
+
+    except Exception:
+        pass
+
+    for candidate in candidates:
+
+        try:
+            n_features = getattr(
+                candidate,
+                "n_features_in_",
+                None,
+            )
+
+            if n_features is not None:
+                expected_count = int(
+                    n_features
+                )
+                break
+
+        except Exception:
+            pass
+
+        try:
+            booster = candidate.get_booster()
+
+            feature_names = getattr(
+                booster,
+                "feature_names",
+                None,
+            )
+
+            if feature_names:
+                expected_count = len(
+                    feature_names
+                )
+                break
+
+        except Exception:
+            pass
+
+    # -------------------------------------------------------------------------
+    # Count validation only.
+    #
+    # We deliberately do NOT use model feature names because the stored
+    # MLflow models do not expose them reliably.
+    # -------------------------------------------------------------------------
+
+    if expected_count is not None:
+
+        actual_count = X_model.shape[1]
+
+        if actual_count != expected_count:
+
+            raise RuntimeError(
+                f"Feature count mismatch for {model_key}.\n"
+                f"Model expects: {expected_count}\n"
+                f"Dataset provides: {actual_count}"
+            )
+
+        print(
+            f"    Feature count validated: "
+            f"{actual_count}"
+        )
+
+    else:
+
+        print(
+            f"    Model does not expose feature count."
+        )
+
+        print(
+            f"    Using dataset feature matrix directly: "
+            f"{X_model.shape}"
+        )
+
+    return X_model
 
 
 # =============================================================================
@@ -364,9 +511,6 @@ def _extract_metrics(
     y_true: pd.Series,
     y_pred: Any,
 ) -> Dict[str, float]:
-    """
-    Calculate regression metrics.
-    """
 
     y_true = np.asarray(
         y_true
@@ -375,6 +519,17 @@ def _extract_metrics(
     y_pred = np.asarray(
         y_pred
     ).ravel()
+
+    if len(y_true) != len(y_pred):
+        raise RuntimeError(
+            "y_true and y_pred have different lengths: "
+            f"{len(y_true)} vs {len(y_pred)}"
+        )
+
+    mse = mean_squared_error(
+        y_true,
+        y_pred,
+    )
 
     return {
         "mae": float(
@@ -385,19 +540,11 @@ def _extract_metrics(
         ),
 
         "mse": float(
-            mean_squared_error(
-                y_true,
-                y_pred,
-            )
+            mse
         ),
 
         "rmse": float(
-            np.sqrt(
-                mean_squared_error(
-                    y_true,
-                    y_pred,
-                )
-            )
+            np.sqrt(mse)
         ),
 
         "r2": float(
@@ -420,9 +567,6 @@ def _plot_actual_vs_predicted(
     variant_name: str,
     output_path: Path,
 ) -> None:
-    """
-    Plot actual vs predicted clan rank.
-    """
 
     plt.figure(
         figsize=(8, 7)
@@ -486,9 +630,6 @@ def _plot_residuals(
     variant_name: str,
     output_path: Path,
 ) -> None:
-    """
-    Plot residuals against predicted values.
-    """
 
     residuals = (
         np.asarray(y_true).ravel()
@@ -536,6 +677,62 @@ def _plot_residuals(
 
 
 # =============================================================================
+# RESIDUAL DISTRIBUTION
+# =============================================================================
+
+def _plot_residual_distribution(
+    y_true: pd.Series,
+    y_pred: np.ndarray,
+    model_name: str,
+    variant_name: str,
+    output_path: Path,
+) -> None:
+
+    residuals = (
+        np.asarray(y_true).ravel()
+        - np.asarray(y_pred).ravel()
+    )
+
+    plt.figure(
+        figsize=(9, 6)
+    )
+
+    plt.hist(
+        residuals,
+        bins=80,
+        alpha=0.8,
+    )
+
+    plt.axvline(
+        0,
+        linestyle="--",
+        linewidth=2,
+    )
+
+    plt.xlabel(
+        "Residual"
+    )
+
+    plt.ylabel(
+        "Frequency"
+    )
+
+    plt.title(
+        f"Residual distribution - "
+        f"{model_name} - {variant_name}"
+    )
+
+    plt.tight_layout()
+
+    plt.savefig(
+        output_path,
+        dpi=150,
+    )
+
+    plt.close()
+
+
+# =============================================================================
 # GLOBAL MODEL COMPARISON
 # =============================================================================
 
@@ -543,12 +740,6 @@ def _plot_global_metrics_comparison(
     metrics_df: pd.DataFrame,
     output_path: Path,
 ) -> None:
-    """
-    Compare MAE, RMSE and R2 across all models and variants.
-
-    MAE/RMSE are plotted separately from R2 because they have different
-    scales and directions.
-    """
 
     plot_df = metrics_df.copy()
 
@@ -646,65 +837,6 @@ def _plot_global_metrics_comparison(
 
 
 # =============================================================================
-# RESIDUAL DISTRIBUTION
-# =============================================================================
-
-def _plot_residual_distribution(
-    y_true: pd.Series,
-    y_pred: np.ndarray,
-    model_name: str,
-    variant_name: str,
-    output_path: Path,
-) -> None:
-    """
-    Plot residual distribution.
-    """
-
-    residuals = (
-        np.asarray(y_true).ravel()
-        - np.asarray(y_pred).ravel()
-    )
-
-    plt.figure(
-        figsize=(9, 6)
-    )
-
-    plt.hist(
-        residuals,
-        bins=80,
-        alpha=0.8,
-    )
-
-    plt.axvline(
-        0,
-        linestyle="--",
-        linewidth=2,
-    )
-
-    plt.xlabel(
-        "Residual"
-    )
-
-    plt.ylabel(
-        "Frequency"
-    )
-
-    plt.title(
-        f"Residual distribution - "
-        f"{model_name} - {variant_name}"
-    )
-
-    plt.tight_layout()
-
-    plt.savefig(
-        output_path,
-        dpi=150,
-    )
-
-    plt.close()
-
-
-# =============================================================================
 # EVALUATE ONE MODEL
 # =============================================================================
 
@@ -716,16 +848,27 @@ def _evaluate_model(
     X_test: pd.DataFrame,
     y_test: pd.Series,
 ) -> Tuple[Dict[str, float], np.ndarray]:
-    """
-    Evaluate one regression model.
-    """
 
     print(
         f"  Evaluating {model_name}..."
     )
 
+    # -------------------------------------------------------------------------
+    # Prepare input
+    # -------------------------------------------------------------------------
+
+    X_test_model = _prepare_model_input(
+        model_key=model_key,
+        model=model,
+        X_test=X_test,
+    )
+
+    # -------------------------------------------------------------------------
+    # Prediction
+    # -------------------------------------------------------------------------
+
     y_pred = model.predict(
-        X_test
+        X_test_model
     )
 
     if hasattr(
@@ -738,6 +881,10 @@ def _evaluate_model(
         y_pred
     ).ravel()
 
+    # -------------------------------------------------------------------------
+    # Metrics
+    # -------------------------------------------------------------------------
+
     metrics = _extract_metrics(
         y_test,
         y_pred,
@@ -748,6 +895,10 @@ def _evaluate_model(
 
     print(
         f"    MAE  = {metrics['mae']:.4f}"
+    )
+
+    print(
+        f"    MSE  = {metrics['mse']:.4f}"
     )
 
     print(
@@ -831,13 +982,17 @@ def main() -> None:
         for model_name, run_id in models.items():
 
             if run_id is None:
+
                 print(
                     f"  {model_name}: SKIPPED"
                 )
+
             else:
+
                 print(
                     f"  {model_name}: {run_id}"
                 )
+
                 configured_count += 1
 
         print(
@@ -847,7 +1002,7 @@ def main() -> None:
     print()
 
     # -------------------------------------------------------------------------
-    # Load datasets
+    # Datasets
     # -------------------------------------------------------------------------
 
     print(
@@ -862,7 +1017,7 @@ def main() -> None:
     all_metrics = []
 
     # -------------------------------------------------------------------------
-    # Evaluate variants
+    # Evaluate
     # -------------------------------------------------------------------------
 
     print(
@@ -897,7 +1052,7 @@ def main() -> None:
         )
 
         # ---------------------------------------------------------------------
-        # Build X / y
+        # Prepare features
         # ---------------------------------------------------------------------
 
         X, y = _prepare_features(
@@ -913,33 +1068,48 @@ def main() -> None:
         )
 
         print(
-            f"Number of features: {X.shape[1]}"
+            f"Number of available features: {X.shape[1]}"
         )
 
         # ---------------------------------------------------------------------
-        # Split
+        # Recreate exact test split WITHOUT building X_train
         # ---------------------------------------------------------------------
 
-        (
-            X_train,
-            X_test,
-            y_train,
-            y_test,
-        ) = _get_split(
-            X,
-            y,
+        test_indices = _get_test_indices(
+            n_samples=len(X),
+            test_size=DEFAULT_TEST_SIZE,
+            random_state=DEFAULT_RANDOM_STATE,
+        )
+
+        X_test = X.iloc[
+            test_indices
+        ].copy()
+
+        y_test = y.iloc[
+            test_indices
+        ].copy()
+
+        print(
+            f"Test shape: {X_test.shape}"
         )
 
         print(
-            f"Train shape: {X_train.shape}"
-        )
-
-        print(
-            f"Test shape:  {X_test.shape}\n"
+            f"Test target size: {len(y_test)}\n"
         )
 
         # ---------------------------------------------------------------------
-        # Output directory for this variant
+        # Free full feature matrix
+        # ---------------------------------------------------------------------
+
+        del X
+        del y
+        del data
+        del test_indices
+
+        gc.collect()
+
+        # ---------------------------------------------------------------------
+        # Output directory
         # ---------------------------------------------------------------------
 
         variant_results_dir = (
@@ -953,7 +1123,13 @@ def main() -> None:
         )
 
         # ---------------------------------------------------------------------
-        # Get manually configured runs
+        # Models
+        #
+        # IMPORTANT:
+        # Load ONE model at a time.
+        #
+        # This prevents XGBoost + Random Forest + Ridge from simultaneously
+        # occupying memory.
         # ---------------------------------------------------------------------
 
         variant_runs = MODEL_RUN_IDS.get(
@@ -961,13 +1137,8 @@ def main() -> None:
             {},
         )
 
-        # ---------------------------------------------------------------------
-        # Evaluate configured models
-        # ---------------------------------------------------------------------
-
         for model_key, run_id in variant_runs.items():
 
-            # Skip models without a Run ID
             if run_id is None:
 
                 print(
@@ -977,14 +1148,25 @@ def main() -> None:
 
                 continue
 
+            model = None
+            y_pred = None
+
             # -----------------------------------------------------------------
-            # Load model
+            # Load
             # -----------------------------------------------------------------
 
             try:
 
+                print(
+                    f"\n  Loading {model_key}..."
+                )
+
                 model = _load_model_from_run(
                     run_id
+                )
+
+                print(
+                    f"  ✓ {model_key} loaded"
                 )
 
             except Exception as exc:
@@ -1038,6 +1220,12 @@ def main() -> None:
                 print(
                     f"  Error: {exc}"
                 )
+
+                # Free model before continuing
+                del model
+                model = None
+
+                gc.collect()
 
                 continue
 
@@ -1093,12 +1281,33 @@ def main() -> None:
             )
 
             print(
-                f"  ✓ {model_key} completed\n"
+                f"  ✓ {model_key} completed"
             )
 
-    # -------------------------------------------------------------------------
-    # Build final DataFrame
-    # -------------------------------------------------------------------------
+            # -----------------------------------------------------------------
+            # CRITICAL MEMORY CLEANUP
+            # -----------------------------------------------------------------
+
+            del y_pred
+            del model
+
+            model = None
+            y_pred = None
+
+            gc.collect()
+
+        # ---------------------------------------------------------------------
+        # Free test data before next dataset
+        # ---------------------------------------------------------------------
+
+        del X_test
+        del y_test
+
+        gc.collect()
+
+    # =========================================================================
+    # FINAL RESULTS
+    # =========================================================================
 
     print(
         "[5/6] Building final comparison tables..."
@@ -1107,16 +1316,14 @@ def main() -> None:
     if not all_metrics:
 
         raise RuntimeError(
-            "No models were successfully evaluated. "
-            "Check MODEL_RUN_IDS."
+            "No models were successfully evaluated."
         )
 
     metrics_df = pd.DataFrame(
         all_metrics
     )
 
-    # Best model first:
-    # lower RMSE is better.
+    # Lower RMSE is better.
 
     metrics_df = metrics_df.sort_values(
         "rmse",
@@ -1141,11 +1348,20 @@ def main() -> None:
         csv_columns
     ].copy()
 
+    RESULTS_DIR.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
     final_csv_df.to_csv(
         RESULTS_DIR
         / "final_model_comparison.csv",
         index=False,
     )
+
+    # -------------------------------------------------------------------------
+    # Console comparison
+    # -------------------------------------------------------------------------
 
     print(
         "\n"
