@@ -2,7 +2,7 @@ import sys
 import json
 import gc
 from pathlib import Path
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, Tuple
 
 import matplotlib
 matplotlib.use("Agg")
@@ -60,7 +60,7 @@ MODEL_RUN_IDS = {
 # GENERAL CONFIGURATION
 # =============================================================================
 
-RESULTS_DIR = ROOT_DIR / "src" / "results" / "P2"
+RESULTS_DIR = ROOT_DIR / "src" / "results"
 
 DATASET_WITH_TROPHIES = (
     ROOT_DIR
@@ -98,6 +98,7 @@ MODEL_DISPLAY_NAMES = {
 # =============================================================================
 
 def _validate_run_configuration() -> None:
+
     valid_variants = {
         "with_trophies",
         "without_trophies",
@@ -149,9 +150,7 @@ def _validate_run_configuration() -> None:
 # DATASET LOADING
 # =============================================================================
 
-def _load_dataset(
-    path: Path,
-) -> pd.DataFrame:
+def _load_dataset(path: Path) -> pd.DataFrame:
 
     if not path.exists():
         raise FileNotFoundError(
@@ -183,10 +182,6 @@ def _prepare_features(
         columns=[TARGET_COLUMN]
     ).copy()
 
-    # -------------------------------------------------------------------------
-    # Remove identifiers
-    # -------------------------------------------------------------------------
-
     columns_to_remove = [
         "player_tag",
         "clan_tag",
@@ -204,20 +199,10 @@ def _prepare_features(
             columns=existing_to_remove
         )
 
-    # -------------------------------------------------------------------------
-    # Convert numeric-looking columns
-    # -------------------------------------------------------------------------
-
     X = X.apply(
         pd.to_numeric,
         errors="coerce",
     )
-
-    # -------------------------------------------------------------------------
-    # Boolean features
-    #
-    # Keep them exactly as modelling columns, converting them to integers.
-    # -------------------------------------------------------------------------
 
     bool_columns = X.select_dtypes(
         include=["bool"]
@@ -230,12 +215,6 @@ def _prepare_features(
             .astype(np.int8)
         )
 
-    # -------------------------------------------------------------------------
-    # Columns that are completely NaN
-    #
-    # For the generated datasets, these are not useful modelling columns.
-    # -------------------------------------------------------------------------
-
     all_nan_columns = X.columns[
         X.isna().all()
     ].tolist()
@@ -244,13 +223,6 @@ def _prepare_features(
         X = X.drop(
             columns=all_nan_columns
         )
-
-    # -------------------------------------------------------------------------
-    # Reduce memory usage.
-    #
-    # The models accept float32 input and this considerably reduces RAM
-    # consumption on the 837k-row datasets.
-    # -------------------------------------------------------------------------
 
     for column in X.columns:
 
@@ -280,11 +252,6 @@ def _get_test_indices(
     test_size: float = DEFAULT_TEST_SIZE,
     random_state: int = DEFAULT_RANDOM_STATE,
 ) -> np.ndarray:
-    """
-    Reproduce sklearn train_test_split without materializing X_train.
-
-    This is important for P2 because the datasets contain ~837k rows.
-    """
 
     indices = np.arange(
         n_samples,
@@ -302,48 +269,159 @@ def _get_test_indices(
 
 
 # =============================================================================
-# MODEL LOADING
+# MLflow 3 LOGGED MODEL LOADING
 # =============================================================================
 
 def _load_model_from_run(
     run_id: str,
+    model_key: str,
 ):
     """
-    Same basic MLflow loading strategy used by P1.
+    Load a model logged with MLflow 3.
 
-    First:
-        runs:/<run_id>/model
+    MLflow 3 stores models as Logged Models with their own model_id.
 
-    Fallback:
-        runs:/<run_id>/modelo
+    Strategy:
+
+    1. Search Logged Models belonging to the source run.
+    2. Request output_format="list" so we receive LoggedModel objects,
+       not a pandas DataFrame.
+    3. Select the appropriate model.
+    4. Load using models:/<model_id>.
+    5. Only if that fails, try the legacy runs:/ URI.
+
+    This avoids the previous DataFrame truth-value error.
     """
 
-    model_uri = f"runs:/{run_id}/model"
+    print(
+        f"    Searching Logged Models for run {run_id}..."
+    )
+
+    # -------------------------------------------------------------------------
+    # MLflow 3 Logged Model search
+    # -------------------------------------------------------------------------
 
     try:
-        return mlflow.pyfunc.load_model(
-            model_uri
+
+        logged_models = mlflow.search_logged_models(
+            filter_string=f"source_run_id='{run_id}'",
+            output_format="list",
         )
 
-    except Exception as first_error:
+        print(
+            f"    Found {len(logged_models)} Logged Model(s)."
+        )
 
-        fallback_uri = f"runs:/{run_id}/modelo"
+        if len(logged_models) > 0:
+
+            # Prefer a model whose name is exactly "model".
+            selected_model = None
+
+            for logged_model in logged_models:
+
+                print(
+                    f"      - name={getattr(logged_model, 'name', None)} "
+                    f"model_id={getattr(logged_model, 'model_id', None)} "
+                    f"status={getattr(logged_model, 'status', None)}"
+                )
+
+                if getattr(
+                    logged_model,
+                    "name",
+                    None,
+                ) == "model":
+
+                    selected_model = logged_model
+                    break
+
+            # If there is no model named "model",
+            # use the first Logged Model.
+            if selected_model is None:
+                selected_model = logged_models[0]
+
+            model_id = getattr(
+                selected_model,
+                "model_id",
+                None,
+            )
+
+            model_uri = getattr(
+                selected_model,
+                "model_uri",
+                None,
+            )
+
+            if model_uri is None and model_id is not None:
+                model_uri = f"models:/{model_id}"
+
+            if model_uri is not None:
+
+                print(
+                    f"    Loading MLflow 3 Logged Model:"
+                )
+
+                print(
+                    f"      {model_uri}"
+                )
+
+                loaded_model = mlflow.pyfunc.load_model(
+                    model_uri
+                )
+
+                print(
+                    "    ✓ MLflow 3 Logged Model loaded"
+                )
+
+                return loaded_model
+
+    except Exception as exc:
+
+        print(
+            "    Logged Model search/loading failed:"
+        )
+
+        print(
+            f"      {exc}"
+        )
+
+    # -------------------------------------------------------------------------
+    # Legacy fallback
+    # -------------------------------------------------------------------------
+
+    fallback_uris = [
+        f"runs:/{run_id}/model",
+        f"runs:/{run_id}/modelo",
+    ]
+
+    for fallback_uri in fallback_uris:
 
         try:
-            return mlflow.pyfunc.load_model(
+
+            print(
+                f"    Trying fallback: {fallback_uri}"
+            )
+
+            loaded_model = mlflow.pyfunc.load_model(
                 fallback_uri
             )
 
-        except Exception as second_error:
-
-            raise RuntimeError(
-                f"Could not load model from run {run_id}.\n"
-                f"Tried:\n"
-                f"  {model_uri}\n"
-                f"  {fallback_uri}\n"
-                f"Original error: {first_error}\n"
-                f"Fallback error: {second_error}"
+            print(
+                f"    ✓ Loaded using fallback: {fallback_uri}"
             )
+
+            return loaded_model
+
+        except Exception as exc:
+
+            print(
+                f"    Fallback failed: {exc}"
+            )
+
+    raise RuntimeError(
+        f"Could not load model from run {run_id}.\n"
+        f"MLflow 3 Logged Model search did not produce "
+        f"a loadable model, and legacy paths failed."
+    )
 
 
 # =============================================================================
@@ -355,34 +433,15 @@ def _prepare_model_input(
     model: Any,
     X_test: pd.DataFrame,
 ) -> pd.DataFrame:
-    """
-    Prepare model input.
-
-    IMPORTANT:
-    P2 datasets are already generated in the exact feature order used
-    by the regression training pipeline.
-
-    Unlike the previous implementation, this function does NOT attempt
-    to recover feature names from the MLflow model.
-
-    P1 follows the same philosophy: the evaluation dataset is rebuilt
-    using the project's feature pipeline and then passed directly to
-    model.predict().
-    """
 
     X_model = X_test.copy()
 
-    # -------------------------------------------------------------------------
-    # Validate model feature count when the underlying model exposes it.
-    # This does not require feature names.
-    # -------------------------------------------------------------------------
-
     expected_count = None
 
-    # PyFunc -> underlying sklearn/xgboost implementation
     candidates = [model]
 
     try:
+
         python_model = model.unwrap_python_model()
 
         candidates.append(
@@ -404,6 +463,7 @@ def _prepare_model_input(
         pass
 
     try:
+
         impl = getattr(
             model,
             "_model_impl",
@@ -411,6 +471,7 @@ def _prepare_model_input(
         )
 
         if impl is not None:
+
             candidates.append(
                 impl
             )
@@ -432,6 +493,7 @@ def _prepare_model_input(
     for candidate in candidates:
 
         try:
+
             n_features = getattr(
                 candidate,
                 "n_features_in_",
@@ -439,15 +501,18 @@ def _prepare_model_input(
             )
 
             if n_features is not None:
+
                 expected_count = int(
                     n_features
                 )
+
                 break
 
         except Exception:
             pass
 
         try:
+
             booster = candidate.get_booster()
 
             feature_names = getattr(
@@ -457,20 +522,15 @@ def _prepare_model_input(
             )
 
             if feature_names:
+
                 expected_count = len(
                     feature_names
                 )
+
                 break
 
         except Exception:
             pass
-
-    # -------------------------------------------------------------------------
-    # Count validation only.
-    #
-    # We deliberately do NOT use model feature names because the stored
-    # MLflow models do not expose them reliably.
-    # -------------------------------------------------------------------------
 
     if expected_count is not None:
 
@@ -485,14 +545,13 @@ def _prepare_model_input(
             )
 
         print(
-            f"    Feature count validated: "
-            f"{actual_count}"
+            f"    Feature count validated: {actual_count}"
         )
 
     else:
 
         print(
-            f"    Model does not expose feature count."
+            "    Model does not expose feature count."
         )
 
         print(
@@ -521,6 +580,7 @@ def _extract_metrics(
     ).ravel()
 
     if len(y_true) != len(y_pred):
+
         raise RuntimeError(
             "y_true and y_pred have different lengths: "
             f"{len(y_true)} vs {len(y_pred)}"
@@ -532,6 +592,7 @@ def _extract_metrics(
     )
 
     return {
+
         "mae": float(
             mean_absolute_error(
                 y_true,
@@ -853,19 +914,15 @@ def _evaluate_model(
         f"  Evaluating {model_name}..."
     )
 
-    # -------------------------------------------------------------------------
-    # Prepare input
-    # -------------------------------------------------------------------------
-
     X_test_model = _prepare_model_input(
         model_key=model_key,
         model=model,
         X_test=X_test,
     )
 
-    # -------------------------------------------------------------------------
-    # Prediction
-    # -------------------------------------------------------------------------
+    print(
+        "    Running predictions..."
+    )
 
     y_pred = model.predict(
         X_test_model
@@ -880,10 +937,6 @@ def _evaluate_model(
     y_pred = np.asarray(
         y_pred
     ).ravel()
-
-    # -------------------------------------------------------------------------
-    # Metrics
-    # -------------------------------------------------------------------------
 
     metrics = _extract_metrics(
         y_test,
@@ -936,7 +989,7 @@ def main() -> None:
     )
 
     # -------------------------------------------------------------------------
-    # Validate configuration
+    # Validate
     # -------------------------------------------------------------------------
 
     print(
@@ -964,7 +1017,7 @@ def main() -> None:
     )
 
     # -------------------------------------------------------------------------
-    # Show configured runs
+    # Show runs
     # -------------------------------------------------------------------------
 
     print(
@@ -1017,7 +1070,7 @@ def main() -> None:
     all_metrics = []
 
     # -------------------------------------------------------------------------
-    # Evaluate
+    # Evaluation
     # -------------------------------------------------------------------------
 
     print(
@@ -1052,7 +1105,7 @@ def main() -> None:
         )
 
         # ---------------------------------------------------------------------
-        # Prepare features
+        # Features
         # ---------------------------------------------------------------------
 
         X, y = _prepare_features(
@@ -1072,7 +1125,7 @@ def main() -> None:
         )
 
         # ---------------------------------------------------------------------
-        # Recreate exact test split WITHOUT building X_train
+        # Recreate exact test split
         # ---------------------------------------------------------------------
 
         test_indices = _get_test_indices(
@@ -1098,7 +1151,7 @@ def main() -> None:
         )
 
         # ---------------------------------------------------------------------
-        # Free full feature matrix
+        # Free full data
         # ---------------------------------------------------------------------
 
         del X
@@ -1124,12 +1177,6 @@ def main() -> None:
 
         # ---------------------------------------------------------------------
         # Models
-        #
-        # IMPORTANT:
-        # Load ONE model at a time.
-        #
-        # This prevents XGBoost + Random Forest + Ridge from simultaneously
-        # occupying memory.
         # ---------------------------------------------------------------------
 
         variant_runs = MODEL_RUN_IDS.get(
@@ -1162,7 +1209,8 @@ def main() -> None:
                 )
 
                 model = _load_model_from_run(
-                    run_id
+                    run_id=run_id,
+                    model_key=model_key,
                 )
 
                 print(
@@ -1221,7 +1269,6 @@ def main() -> None:
                     f"  Error: {exc}"
                 )
 
-                # Free model before continuing
                 del model
                 model = None
 
@@ -1285,7 +1332,7 @@ def main() -> None:
             )
 
             # -----------------------------------------------------------------
-            # CRITICAL MEMORY CLEANUP
+            # Memory cleanup
             # -----------------------------------------------------------------
 
             del y_pred
@@ -1297,7 +1344,7 @@ def main() -> None:
             gc.collect()
 
         # ---------------------------------------------------------------------
-        # Free test data before next dataset
+        # Free test data
         # ---------------------------------------------------------------------
 
         del X_test
@@ -1322,8 +1369,6 @@ def main() -> None:
     metrics_df = pd.DataFrame(
         all_metrics
     )
-
-    # Lower RMSE is better.
 
     metrics_df = metrics_df.sort_values(
         "rmse",
@@ -1424,10 +1469,13 @@ def main() -> None:
     # -------------------------------------------------------------------------
 
     summary = {
+
         "datasets": {
+
             "with_trophies": str(
                 DATASET_WITH_TROPHIES
             ),
+
             "without_trophies": str(
                 DATASET_WITHOUT_TROPHIES
             ),
