@@ -33,9 +33,6 @@ from mlflow_tracking.experiments import get_experiment_name
 DATASET_PATH = (
     "data/datasets/clan_war_performance_regression.parquet"
 )
-
-TARGET_COLUMN = "war_success_rate"
-
 RANDOM_STATE = 42
 TEST_SIZE = 0.2
 
@@ -51,11 +48,17 @@ data = pd.read_parquet(DATASET_PATH)
 # FEATURES AND TARGET
 # =============================================================================
 
-X = data.drop(
-    columns=[TARGET_COLUMN]
-)
+X = data.drop(columns=[
+    "clan_tag",
+    "war_frequency",
+    "war_league",
+    "capital_league",
+    "type",
+    "location_name",
+    "war_success_rate",
+])
 
-y = data[TARGET_COLUMN]
+y = data["war_success_rate"]
 
 
 # =============================================================================
@@ -92,7 +95,7 @@ with mlflow_run(
         DATASET_PATH,
         row_count=len(data),
         feature_count=X.shape[1],
-        target=TARGET_COLUMN,
+        target="war_success_rate",
     )
 
     # -------------------------------------------------------------------------

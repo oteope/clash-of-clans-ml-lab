@@ -22,8 +22,17 @@ RANDOM_STATE = 42
 data = pd.read_parquet(DATASET_PATH)
 
 #Defining the features and variables
-X = data.drop(columns="")
-y = data("war_success_rate")
+X = data.drop(columns=[
+    "clan_tag",
+    "war_frequency",
+    "war_league",
+    "capital_league",
+    "type",
+    "location_name",
+    "war_success_rate",
+])
+
+y = data["war_success_rate"]
 
 #Train and test split
 X_train, X_test, y_train, y_test = train_test_split(

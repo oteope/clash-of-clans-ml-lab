@@ -33,7 +33,16 @@ print("Loading dataset...")
 data = pd.read_parquet(DATASET_PATH)
 
 #Defining the features and targets
-X = data.drop(columns =[])
+X = data.drop(columns=[
+    "clan_tag",
+    "war_frequency",
+    "war_league",
+    "capital_league",
+    "type",
+    "location_name",
+    "war_success_rate",
+])
+
 y = data["war_success_rate"]
 
 #Preparing the dataset
