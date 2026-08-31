@@ -1,14 +1,20 @@
 import sys
+import os
 import json
 import gc
+import pickle
 from pathlib import Path
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import urlparse, unquote
 
 import matplotlib
 matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 import mlflow
+import mlflow.sklearn
+import mlflow.xgboost
+from mlflow.tracking import MlflowClient
 import numpy as np
 import pandas as pd
 
@@ -171,6 +177,25 @@ def _load_dataset(path: Path) -> pd.DataFrame:
 # =============================================================================
 # FEATURE PREPARATION
 # =============================================================================
+#
+# NOTE: this stays as it was. It intentionally does NOT hardcode the
+# training-time column drops (league_name, war_frequency, capital_league,
+# etc.) beyond the obvious ID/target columns. Those extra columns are
+# non-numeric (clan/player league and category labels from the Clash of
+# Clans API), so `pd.to_numeric(errors="coerce")` turns them into all-NaN
+# columns, and the all-NaN cleanup below removes them -- reproducing the
+# same effective feature set the training scripts build explicitly,
+# without duplicating that column list here (and risking it drifting out
+# of sync with the six training scripts again).
+#
+# What this function does NOT do is decide which of the *numeric* columns
+# (e.g. capital_contributions / clan_mean_capital_contributions) a given
+# model was trained with -- the six P2 training scripts are not all
+# consistent with each other about those two columns. That's handled
+# per-model in `_prepare_model_input`, using each loaded model's own
+# `feature_names_in_` / booster feature names as the source of truth,
+# rather than duplicating a second guess here.
+# =============================================================================
 
 def _prepare_features(
     data: pd.DataFrame,
@@ -269,158 +294,266 @@ def _get_test_indices(
 
 
 # =============================================================================
-# MLflow 3 LOGGED MODEL LOADING
+# MLflow 3 MODEL LOADING
 # =============================================================================
+#
+# Diagnosis (see chat for the full writeup and the GitHub issues this
+# matches: mlflow/mlflow#16429 and #16501):
+#
+# Reproduced directly against a real local MLflow 3.15.2 install: calling
+# mlflow.sklearn.log_model(model, artifact_path="model", ...) -- exactly
+# what log_model_and_artifacts() in this project does -- no longer writes
+# anything under the run's own artifact directory. runs:/<run_id>/model
+# has nothing to find, so "please ensure the path is correct" is a
+# correct error, not a fluke. The MLmodel/model.pkl files only exist
+# under a separate LoggedModel-scoped location.
+#
+# Also reproduced: mlflow.search_logged_models(filter_string=f"source_run_id='{run_id}'")
+# returns 0 results even when a matching row genuinely exists in the
+# logged_models table with that exact source_run_id. That search/filter
+# path is not reliable here -- which is exactly the "Found 0 Logged
+# Model(s)" you were seeing.
+#
+# What *does* reliably work, confirmed against a live run: asking the RUN
+# itself which LoggedModel(s) it produced, via run.outputs.model_outputs,
+# then loading models:/<model_id> with the flavor-native loader. This is
+# strategy 1 below.
+#
+# Ridge/XGBoost currently succeeding via the old runs:/<run_id>/model path
+# most likely means those specific runs were logged under a different
+# MLflow install than whatever was active for the Random Forest runs --
+# requirements.txt only pins mlflow>=2.10.0, so a `pip install` run at a
+# different time could easily have resolved to a different 2.x/3.x
+# version. Strategies 2-4 below keep that path working for whichever
+# runs it already works for, while fixing the ones it doesn't.
+# =============================================================================
+
+def _file_uri_to_local_path(uri: str) -> Path:
+    """
+    Convert a file:// artifact URI (as stored by MLflow -- percent-encoded,
+    e.g. spaces as %20) into a real local Path. Handles the Windows
+    leading-slash-before-drive-letter case that a bare urlparse().path
+    would otherwise leave in the string (producing "/C:/Users/..." instead
+    of "C:/Users/...").
+    """
+    parsed = urlparse(uri)
+    path = unquote(parsed.path)
+    if os.name == "nt" and len(path) > 2 and path[0] == "/" and path[2] == ":":
+        path = path[1:]
+    return Path(path)
+
+
+def _find_mlmodel_dir(root: Path) -> Optional[Path]:
+    """Search a local artifact directory for an MLmodel flavor file and
+    return the directory containing it, or None if there isn't one."""
+    if not root.exists():
+        return None
+    if (root / "MLmodel").exists():
+        return root
+    matches = list(root.rglob("MLmodel"))
+    return matches[0].parent if matches else None
+
+
+def _load_native_flavor(model_uri_or_path: str, model_key: str) -> Any:
+    """
+    Load with the flavor-native loader instead of mlflow.pyfunc.load_model,
+    so we get the raw estimator/booster object back directly (a plain
+    RandomForestRegressor / Ridge / XGBRegressor) rather than a PyFuncModel
+    wrapper. This is both simpler downstream (feature_names_in_, .predict()
+    work with no unwrapping) and matches exactly how log_model_and_artifacts()
+    chose the flavor when logging.
+    """
+    if model_key == "xgboost":
+        return mlflow.xgboost.load_model(model_uri_or_path)
+    return mlflow.sklearn.load_model(model_uri_or_path)
+
 
 def _load_model_from_run(
     run_id: str,
     model_key: str,
-):
+) -> Any:
     """
-    Load a model logged with MLflow 3.
+    Load a model logged with MLflow 3 via log_model_and_artifacts().
 
-    MLflow 3 stores models as Logged Models with their own model_id.
+    Strategy, in order (each one printed clearly so a failure shows the
+    real error and the exact path/location that was tried):
 
-    Strategy:
+      1. run.outputs.model_outputs -> models:/<model_id>
+         The correct MLflow-3-native lookup. Confirmed working in testing.
+      2. Legacy runs:/<run_id>/model and runs:/<run_id>/modelo
+         Kept for any run still logged the classic (pre-3.x-behavior) way.
+      3. Direct local artifact inspection: resolve the run's and/or the
+         LoggedModel's artifact_location file:// URI to a real path,
+         list what's actually there, and load straight from that local
+         directory -- bypassing runs:/ and models:/ URI resolution
+         entirely.
+      4. Raw pickle.load() on model.pkl next to whatever MLmodel file
+         strategy 3 found, matching serialization_format="pickle" used
+         at training time. Absolute last resort.
 
-    1. Search Logged Models belonging to the source run.
-    2. Request output_format="list" so we receive LoggedModel objects,
-       not a pandas DataFrame.
-    3. Select the appropriate model.
-    4. Load using models:/<model_id>.
-    5. Only if that fails, try the legacy runs:/ URI.
-
-    This avoids the previous DataFrame truth-value error.
+    Returns the raw flavor object, never a pyfunc wrapper.
     """
 
-    print(
-        f"    Searching Logged Models for run {run_id}..."
-    )
+    client = MlflowClient()
 
-    # -------------------------------------------------------------------------
-    # MLflow 3 Logged Model search
-    # -------------------------------------------------------------------------
+    # -------------------------------------------------------------------
+    # Strategy 1: run -> LoggedModel(s) -> models:/<model_id>
+    # -------------------------------------------------------------------
+
+    run = None
 
     try:
-
-        logged_models = mlflow.search_logged_models(
-            filter_string=f"source_run_id='{run_id}'",
-            output_format="list",
+        run = client.get_run(run_id)
+        model_outputs = (
+            run.outputs.model_outputs
+            if run.outputs is not None
+            else []
         )
 
         print(
-            f"    Found {len(logged_models)} Logged Model(s)."
+            f"    run.outputs.model_outputs: {len(model_outputs)} entry(ies)"
         )
 
-        if len(logged_models) > 0:
+        for output in model_outputs:
 
-            # Prefer a model whose name is exactly "model".
-            selected_model = None
+            model_id = output.model_id
 
-            for logged_model in logged_models:
-
+            try:
+                logged_model = client.get_logged_model(model_id)
                 print(
-                    f"      - name={getattr(logged_model, 'name', None)} "
-                    f"model_id={getattr(logged_model, 'model_id', None)} "
-                    f"status={getattr(logged_model, 'status', None)}"
+                    f"      - model_id={model_id} "
+                    f"name={logged_model.name} "
+                    f"status={logged_model.status}"
                 )
+            except Exception:
+                pass
 
-                if getattr(
-                    logged_model,
-                    "name",
-                    None,
-                ) == "model":
+            model_uri = f"models:/{model_id}"
 
-                    selected_model = logged_model
-                    break
-
-            # If there is no model named "model",
-            # use the first Logged Model.
-            if selected_model is None:
-                selected_model = logged_models[0]
-
-            model_id = getattr(
-                selected_model,
-                "model_id",
-                None,
-            )
-
-            model_uri = getattr(
-                selected_model,
-                "model_uri",
-                None,
-            )
-
-            if model_uri is None and model_id is not None:
-                model_uri = f"models:/{model_id}"
-
-            if model_uri is not None:
-
-                print(
-                    f"    Loading MLflow 3 Logged Model:"
-                )
-
-                print(
-                    f"      {model_uri}"
-                )
-
-                loaded_model = mlflow.pyfunc.load_model(
-                    model_uri
-                )
-
-                print(
-                    "    ✓ MLflow 3 Logged Model loaded"
-                )
-
+            try:
+                print(f"    Loading MLflow 3 Logged Model: {model_uri}")
+                loaded_model = _load_native_flavor(model_uri, model_key)
+                print("    \u2713 Loaded via models:/<model_id>")
                 return loaded_model
+            except Exception as exc:
+                print(f"    {model_uri} failed: {exc}")
 
     except Exception as exc:
+        print(f"    Could not inspect run outputs: {exc}")
 
-        print(
-            "    Logged Model search/loading failed:"
-        )
+    # -------------------------------------------------------------------
+    # Strategy 2: legacy runs:/ paths
+    # -------------------------------------------------------------------
 
-        print(
-            f"      {exc}"
-        )
-
-    # -------------------------------------------------------------------------
-    # Legacy fallback
-    # -------------------------------------------------------------------------
-
-    fallback_uris = [
+    for fallback_uri in (
         f"runs:/{run_id}/model",
         f"runs:/{run_id}/modelo",
-    ]
+    ):
+        try:
+            print(f"    Trying fallback: {fallback_uri}")
+            loaded_model = _load_native_flavor(fallback_uri, model_key)
+            print(f"    \u2713 Loaded using fallback: {fallback_uri}")
+            return loaded_model
+        except Exception as exc:
+            print(f"    Fallback failed: {exc}")
 
-    for fallback_uri in fallback_uris:
+    # -------------------------------------------------------------------
+    # Strategy 3: direct local artifact inspection
+    # -------------------------------------------------------------------
+
+    print("    Falling back to direct local artifact inspection...")
+
+    candidate_locations: List[Tuple[str, str]] = []
+
+    try:
+        if run is None:
+            run = client.get_run(run_id)
+
+        candidate_locations.append(
+            ("run artifact root", run.info.artifact_uri)
+        )
+
+        model_outputs = (
+            run.outputs.model_outputs
+            if run.outputs is not None
+            else []
+        )
+
+        for output in model_outputs:
+            try:
+                logged_model = client.get_logged_model(output.model_id)
+                candidate_locations.append(
+                    (
+                        f"logged model {output.model_id}",
+                        logged_model.artifact_location,
+                    )
+                )
+            except Exception:
+                pass
+
+    except Exception as exc:
+        print(f"    Could not enumerate candidate locations: {exc}")
+
+    for label, uri in candidate_locations:
 
         try:
-
-            print(
-                f"    Trying fallback: {fallback_uri}"
-            )
-
-            loaded_model = mlflow.pyfunc.load_model(
-                fallback_uri
-            )
-
-            print(
-                f"    ✓ Loaded using fallback: {fallback_uri}"
-            )
-
-            return loaded_model
-
+            local_root = _file_uri_to_local_path(uri)
         except Exception as exc:
+            print(f"    Could not resolve {label} ({uri}): {exc}")
+            continue
 
-            print(
-                f"    Fallback failed: {exc}"
-            )
+        print(f"    Inspecting {label} on disk: {local_root}")
+
+        if not local_root.exists():
+            print("      (path does not exist)")
+            continue
+
+        found_files = sorted(
+            str(p.relative_to(local_root))
+            for p in local_root.rglob("*")
+            if p.is_file()
+        )
+
+        print(
+            f"      Files found: {found_files if found_files else '(empty)'}"
+        )
+
+        mlmodel_dir = _find_mlmodel_dir(local_root)
+
+        if mlmodel_dir is None:
+            continue
+
+        print(f"    Found MLmodel at: {mlmodel_dir}")
+
+        try:
+            loaded_model = _load_native_flavor(str(mlmodel_dir), model_key)
+            print(f"    \u2713 Loaded directly from local path: {mlmodel_dir}")
+            return loaded_model
+        except Exception as exc:
+            print(f"    Native flavor load from local path failed: {exc}")
+
+            # ---------------------------------------------------------------
+            # Strategy 4: raw pickle, last resort
+            # ---------------------------------------------------------------
+
+            pkl_path = mlmodel_dir / "model.pkl"
+
+            if pkl_path.exists():
+                try:
+                    print(f"    Trying raw pickle.load on: {pkl_path}")
+                    with open(pkl_path, "rb") as f:
+                        loaded_model = pickle.load(f)
+                    print("    \u2713 Loaded via raw pickle.load")
+                    return loaded_model
+                except Exception as exc2:
+                    print(f"    Raw pickle.load failed: {exc2}")
 
     raise RuntimeError(
         f"Could not load model from run {run_id}.\n"
-        f"MLflow 3 Logged Model search did not produce "
-        f"a loadable model, and legacy paths failed."
+        f"Tried: MLflow 3 Logged Model (models:/<model_id>), legacy "
+        f"runs:/ paths, and direct local artifact inspection. See the "
+        f"diagnostic output above for the real error and exact paths "
+        f"tried at each step."
     )
 
 
@@ -433,125 +566,75 @@ def _prepare_model_input(
     model: Any,
     X_test: pd.DataFrame,
 ) -> pd.DataFrame:
+    """
+    Align X_test to exactly the columns the loaded model was trained on.
+
+    Uses feature *names* (feature_names_in_ for sklearn-flavor models,
+    including XGBRegressor's sklearn API; the booster's feature_names as a
+    fallback for xgboost), not just a feature count. This matters here
+    specifically because the six P2 training scripts are not all
+    consistent with each other about two columns (capital_contributions,
+    clan_mean_capital_contributions) -- with_trophies always drops them,
+    without_trophies keeps them for random_forest/ridge but drops them for
+    xgboost. Selecting by name handles all six combinations correctly
+    without hardcoding any of them here.
+    """
 
     X_model = X_test.copy()
 
-    expected_count = None
+    expected_features: Optional[List[str]] = None
 
-    candidates = [model]
+    feature_names_in = getattr(model, "feature_names_in_", None)
 
-    try:
+    if feature_names_in is not None:
+        expected_features = list(feature_names_in)
 
-        python_model = model.unwrap_python_model()
-
-        candidates.append(
-            python_model
-        )
-
-        inner_model = getattr(
-            python_model,
-            "model",
-            None,
-        )
-
-        if inner_model is not None:
-            candidates.append(
-                inner_model
-            )
-
-    except Exception:
-        pass
-
-    try:
-
-        impl = getattr(
-            model,
-            "_model_impl",
-            None,
-        )
-
-        if impl is not None:
-
-            candidates.append(
-                impl
-            )
-
-            inner_model = getattr(
-                impl,
-                "model",
-                None,
-            )
-
-            if inner_model is not None:
-                candidates.append(
-                    inner_model
-                )
-
-    except Exception:
-        pass
-
-    for candidate in candidates:
-
+    if expected_features is None:
         try:
-
-            n_features = getattr(
-                candidate,
-                "n_features_in_",
-                None,
-            )
-
-            if n_features is not None:
-
-                expected_count = int(
-                    n_features
-                )
-
-                break
-
+            booster = model.get_booster()
+            booster_names = getattr(booster, "feature_names", None)
+            if booster_names:
+                expected_features = list(booster_names)
         except Exception:
             pass
 
-        try:
+    if expected_features is not None:
 
-            booster = candidate.get_booster()
+        missing = [
+            column
+            for column in expected_features
+            if column not in X_model.columns
+        ]
 
-            feature_names = getattr(
-                booster,
-                "feature_names",
-                None,
-            )
-
-            if feature_names:
-
-                expected_count = len(
-                    feature_names
-                )
-
-                break
-
-        except Exception:
-            pass
-
-    if expected_count is not None:
-
-        actual_count = X_model.shape[1]
-
-        if actual_count != expected_count:
-
+        if missing:
             raise RuntimeError(
-                f"Feature count mismatch for {model_key}.\n"
-                f"Model expects: {expected_count}\n"
-                f"Dataset provides: {actual_count}"
+                f"Feature mismatch for {model_key}.\n"
+                f"Model expects columns not present in the prepared "
+                f"dataset: {missing}"
             )
+
+        extra = [
+            column
+            for column in X_model.columns
+            if column not in expected_features
+        ]
+
+        if extra:
+            print(
+                f"    Dropping {len(extra)} column(s) not used by "
+                f"this model: {extra}"
+            )
+
+        X_model = X_model[expected_features]
 
         print(
-            f"    Feature count validated: {actual_count}"
+            f"    Feature count validated: {len(expected_features)}"
         )
 
     else:
 
         print(
-            "    Model does not expose feature count."
+            "    Model does not expose feature names."
         )
 
         print(
@@ -875,11 +958,11 @@ def _plot_global_metrics_comparison(
     )
 
     plt.title(
-        "R² comparison"
+        "R\u00b2 comparison"
     )
 
     plt.ylabel(
-        "R²"
+        "R\u00b2"
     )
 
     plt.tight_layout()
@@ -959,7 +1042,7 @@ def _evaluate_model(
     )
 
     print(
-        f"    R²   = {metrics['r2']:.4f}"
+        f"    R\u00b2   = {metrics['r2']:.4f}"
     )
 
     return (
@@ -999,7 +1082,7 @@ def main() -> None:
     _validate_run_configuration()
 
     print(
-        "✓ Run configuration valid\n"
+        "\u2713 Run configuration valid\n"
     )
 
     # -------------------------------------------------------------------------
@@ -1013,7 +1096,7 @@ def main() -> None:
     configure_tracking()
 
     print(
-        "✓ MLflow configured\n"
+        "\u2713 MLflow configured\n"
     )
 
     # -------------------------------------------------------------------------
@@ -1214,7 +1297,7 @@ def main() -> None:
                 )
 
                 print(
-                    f"  ✓ {model_key} loaded"
+                    f"  \u2713 {model_key} loaded"
                 )
 
             except Exception as exc:
@@ -1328,7 +1411,7 @@ def main() -> None:
             )
 
             print(
-                f"  ✓ {model_key} completed"
+                f"  \u2713 {model_key} completed"
             )
 
             # -----------------------------------------------------------------
