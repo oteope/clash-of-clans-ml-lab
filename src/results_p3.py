@@ -52,8 +52,8 @@ if str(ROOT_DIR) not in sys.path:
 # =============================================================================
 
 MODEL_RUN_IDS = {
-    "linear_regression": None,
-    "random_forest": None,
+    "linear_regression": "b6335fa7af0d497ea722eb96255eb151",
+    "random_forest": "b812bc69c0444d84a51d861612e61cb6",
     "gradient_boosting": "fdeb45c2be044680b24fecdecdc202e5",
 }
 
