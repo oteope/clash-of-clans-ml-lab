@@ -1,12 +1,14 @@
-import sys
-from pathlib import Path
-
 import mlflow
 import numpy as np
 import pandas as pd
 
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import (
+    train_test_split,
+    GridSearchCV,
+)
+
 from sklearn.linear_model import LinearRegression
+
 from sklearn.metrics import (
     mean_absolute_error,
     mean_squared_error,
@@ -33,6 +35,7 @@ from mlflow_tracking.experiments import get_experiment_name
 DATASET_PATH = (
     "data/datasets/clan_war_performance_regression.parquet"
 )
+
 RANDOM_STATE = 42
 TEST_SIZE = 0.2
 
@@ -84,7 +87,7 @@ experiment_name = get_experiment_name("p3")
 
 with mlflow_run(
     experiment_name,
-    run_name="Linear regression baseline",
+    run_name="Linear Regression GridSearchCV",
 ):
 
     # -------------------------------------------------------------------------
@@ -109,36 +112,69 @@ with mlflow_run(
     )
 
     # -------------------------------------------------------------------------
-    # Model
+    # Base model
     # -------------------------------------------------------------------------
 
     model = LinearRegression()
 
     # -------------------------------------------------------------------------
-    # Model parameters
+    # Hyperparameter grid
     # -------------------------------------------------------------------------
 
-    log_model_params({
-        "fit_intercept": model.fit_intercept,
-        "copy_X": model.copy_X,
-        "n_jobs": model.n_jobs,
-        "positive": model.positive,
-    })
+    param_grid = {
+        "fit_intercept": [True, False],
+        "positive": [True, False],
+    }
+
+    # -------------------------------------------------------------------------
+    # Grid Search
+    # -------------------------------------------------------------------------
+
+    search = GridSearchCV(
+        estimator=model,
+        param_grid=param_grid,
+        scoring="neg_mean_absolute_error",
+        cv=3,
+        n_jobs=-1,
+        verbose=1,
+    )
 
     # -------------------------------------------------------------------------
     # Training
     # -------------------------------------------------------------------------
 
-    model.fit(
+    search.fit(
         X_train,
         y_train,
     )
 
     # -------------------------------------------------------------------------
+    # Best model
+    # -------------------------------------------------------------------------
+
+    best_model = search.best_estimator_
+
+    best_params = search.best_params_
+
+    # -------------------------------------------------------------------------
+    # Log model parameters
+    # -------------------------------------------------------------------------
+
+    log_model_params({
+        "fit_intercept": best_params["fit_intercept"],
+        "positive": best_params["positive"],
+        "copy_X": best_model.copy_X,
+        "n_jobs": best_model.n_jobs,
+        "tuning_method": "GridSearchCV",
+        "cv": 3,
+        "scoring": "neg_mean_absolute_error",
+    })
+
+    # -------------------------------------------------------------------------
     # Prediction
     # -------------------------------------------------------------------------
 
-    y_pred = model.predict(
+    y_pred = best_model.predict(
         X_test
     )
 
@@ -174,9 +210,9 @@ with mlflow_run(
     )
 
     # -------------------------------------------------------------------------
-    # Log model and artifacts
+    # Log best model and artifacts
     # -------------------------------------------------------------------------
 
     log_model_and_artifacts(
-        model
+        best_model
     )
