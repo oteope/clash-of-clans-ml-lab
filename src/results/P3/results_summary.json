@@ -1,0 +1,35 @@
+{
+  "dataset": "C:\\Users\\Usuario\\Desktop\\Clash of Clans ML Lab\\data\\datasets\\clan_war_performance_regression.parquet",
+  "target": "war_success_rate",
+  "test_size": 0.2,
+  "random_state": 42,
+  "target_scale": {
+    "lower_bound": 0.0,
+    "upper_bound": 1.0,
+    "tol_tight": 0.05,
+    "tol_loose": 0.1,
+    "unit": "fraction (0-1)"
+  },
+  "models": {
+    "linear_regression": null,
+    "random_forest": null,
+    "gradient_boosting": "fdeb45c2be044680b24fecdecdc202e5"
+  },
+  "results": [
+    {
+      "model": "gradient_boosting",
+      "mae": 0.09797527491442597,
+      "medae": 0.08012773541737872,
+      "mse": 0.015747009332808246,
+      "rmse": 0.12548708831114158,
+      "r2": 0.2206211485060514,
+      "explained_variance": 0.22069053281076534,
+      "max_error": 0.6025806099065605,
+      "mean_bias": 0.0011840099560423705,
+      "within_tight_pct": 32.166826462128476,
+      "within_loose_pct": 60.41866410993928,
+      "pct_out_of_bounds": 0.0,
+      "run_id": "fdeb45c2be044680b24fecdecdc202e5"
+    }
+  ]
+}
