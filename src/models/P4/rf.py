@@ -33,9 +33,9 @@ data = pd.read_parquet(DATASET_PATH)
 
 
 # Defining features and target
-X = data.drop(columns="")
+X = data.drop(columns="performance_class").select_dtypes(include=["number", "bool"])
 
-y = data[""]
+y = data["performance_class"]
 
 
 # Train and test split
@@ -62,7 +62,7 @@ with mlflow_run(
         DATASET_PATH,
         row_count=len(data),
         feature_count=X.shape[1],
-        target="",
+        target="performance_class",
     )
 
     # Logging train/test split config

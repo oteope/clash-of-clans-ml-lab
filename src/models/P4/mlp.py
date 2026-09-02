@@ -20,6 +20,7 @@ from mlflow_tracking.tracking_utils import (
 )
 
 from mlflow_tracking.experiments import get_experiment_name
+from sklearn.metrics import train_test_split
 
 
 # ============================================================
@@ -42,8 +43,9 @@ data = pd.read_parquet(DATASET_PATH)
 # Features / target
 # ============================================================
 
-X = data.drop(columns = "")
-y = data[""]
+X = data.drop(columns="performance_class").select_dtypes(include="number")
+
+y = data["performance_class"]
 
 # ============================================================
 # Train / validation / test split
