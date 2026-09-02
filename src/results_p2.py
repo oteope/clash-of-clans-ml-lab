@@ -3,6 +3,7 @@ import os
 import json
 import gc
 import pickle
+import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse, unquote
@@ -224,16 +225,35 @@ def _prepare_features(
             columns=existing_to_remove
         )
 
+    # Detected BEFORE numeric coercion: a bool column with no missing
+    # values keeps dtype "bool" straight through pd.to_numeric below, but
+    # a bool column that DOES have missing values is already dtype
+    # "object" by this point (pandas can't hold NaN in a plain bool
+    # column) -- coercion still correctly turns its True/False into
+    # 1.0/0.0, but leaves the actual missing entries as NaN rather than
+    # False, and a dtype=="bool" check done AFTER coercion never finds
+    # that column at all, so those NaNs would otherwise silently ride
+    # through to .predict(). Checking here, before coercion, catches
+    # both cases the same way.
+    bool_like_columns = []
+
+    for column in X.columns:
+
+        if X[column].dtype == bool:
+            bool_like_columns.append(column)
+            continue
+
+        if X[column].dtype == object:
+            non_null = X[column].dropna()
+            if len(non_null) > 0 and non_null.isin([True, False]).all():
+                bool_like_columns.append(column)
+
     X = X.apply(
         pd.to_numeric,
         errors="coerce",
     )
 
-    bool_columns = X.select_dtypes(
-        include=["bool"]
-    ).columns.tolist()
-
-    for column in bool_columns:
+    for column in bool_like_columns:
         X[column] = (
             X[column]
             .fillna(False)
@@ -354,6 +374,42 @@ def _find_mlmodel_dir(root: Path) -> Optional[Path]:
     return matches[0].parent if matches else None
 
 
+def _describe_local_artifacts(uri: str, label: str) -> None:
+    """
+    Resolve a file:// artifact URI to a local path and print what's there,
+    WITH FILE SIZES, before any load is attempted. This runs unconditionally
+    (not just on failure) specifically so a large model.pkl is visible up
+    front -- a bare `except Exception as exc: print(exc)` can print an
+    EMPTY string for some exceptions (MemoryError raised with no message
+    does exactly this), which looks like "it just silently failed" when
+    what actually happened is the file is too big to fit in memory. Seeing
+    the size here removes the guessing.
+    """
+    try:
+        local_root = _file_uri_to_local_path(uri)
+    except Exception as exc:
+        print(f"    Could not resolve {label} ({uri}): {type(exc).__name__}: {exc}")
+        return
+
+    if not local_root.exists():
+        print(f"    {label}: {local_root} (does not exist)")
+        return
+
+    files = sorted(p for p in local_root.rglob("*") if p.is_file())
+
+    if not files:
+        print(f"    {label}: {local_root} (empty)")
+        return
+
+    print(f"    {label}: {local_root}")
+
+    for file_path in files:
+        size_mb = file_path.stat().st_size / (1024 * 1024)
+        print(
+            f"      - {file_path.relative_to(local_root)}: {size_mb:,.1f} MB"
+        )
+
+
 def _load_native_flavor(model_uri_or_path: str, model_key: str) -> Any:
     """
     Load with the flavor-native loader instead of mlflow.pyfunc.load_model,
@@ -391,6 +447,14 @@ def _load_model_from_run(
          strategy 3 found, matching serialization_format="pickle" used
          at training time. Absolute last resort.
 
+    Every exception is printed as "ExceptionType: message" rather than
+    just "message" -- some exceptions (a bare MemoryError in particular)
+    stringify to an EMPTY string, which otherwise looks exactly like a
+    silent, unexplained failure instead of what it actually is. File
+    sizes for whatever's found on disk are also printed up front, before
+    any load is attempted, so a too-large-to-load model.pkl is visible
+    immediately rather than inferred after the fact.
+
     Returns the raw flavor object, never a pyfunc wrapper.
     """
 
@@ -417,6 +481,7 @@ def _load_model_from_run(
         for output in model_outputs:
 
             model_id = output.model_id
+            logged_model = None
 
             try:
                 logged_model = client.get_logged_model(model_id)
@@ -428,6 +493,12 @@ def _load_model_from_run(
             except Exception:
                 pass
 
+            if logged_model is not None:
+                _describe_local_artifacts(
+                    logged_model.artifact_location,
+                    f"logged model {model_id} on disk",
+                )
+
             model_uri = f"models:/{model_id}"
 
             try:
@@ -436,10 +507,16 @@ def _load_model_from_run(
                 print("    \u2713 Loaded via models:/<model_id>")
                 return loaded_model
             except Exception as exc:
-                print(f"    {model_uri} failed: {exc}")
+                print(
+                    f"    {model_uri} failed: "
+                    f"{type(exc).__name__}: {exc}"
+                )
 
     except Exception as exc:
-        print(f"    Could not inspect run outputs: {exc}")
+        print(
+            f"    Could not inspect run outputs: "
+            f"{type(exc).__name__}: {exc}"
+        )
 
     # -------------------------------------------------------------------
     # Strategy 2: legacy runs:/ paths
@@ -455,7 +532,9 @@ def _load_model_from_run(
             print(f"    \u2713 Loaded using fallback: {fallback_uri}")
             return loaded_model
         except Exception as exc:
-            print(f"    Fallback failed: {exc}")
+            print(
+                f"    Fallback failed: {type(exc).__name__}: {exc}"
+            )
 
     # -------------------------------------------------------------------
     # Strategy 3: direct local artifact inspection
@@ -492,14 +571,20 @@ def _load_model_from_run(
                 pass
 
     except Exception as exc:
-        print(f"    Could not enumerate candidate locations: {exc}")
+        print(
+            f"    Could not enumerate candidate locations: "
+            f"{type(exc).__name__}: {exc}"
+        )
 
     for label, uri in candidate_locations:
 
         try:
             local_root = _file_uri_to_local_path(uri)
         except Exception as exc:
-            print(f"    Could not resolve {label} ({uri}): {exc}")
+            print(
+                f"    Could not resolve {label} ({uri}): "
+                f"{type(exc).__name__}: {exc}"
+            )
             continue
 
         print(f"    Inspecting {label} on disk: {local_root}")
@@ -525,18 +610,40 @@ def _load_model_from_run(
 
         print(f"    Found MLmodel at: {mlmodel_dir}")
 
+        pkl_path = mlmodel_dir / "model.pkl"
+
+        if pkl_path.exists():
+            size_mb = pkl_path.stat().st_size / (1024 * 1024)
+            print(f"    model.pkl size: {size_mb:,.1f} MB")
+
+            if size_mb > 1500:
+                print(
+                    "    NOTE: this is a large file. If the next two "
+                    "attempts fail with an EMPTY error message below, "
+                    "that blank is very likely a bare MemoryError -- "
+                    "not the path being wrong -- i.e. this process ran "
+                    "out of available RAM while deserializing it, not "
+                    "a location problem."
+                )
+
         try:
             loaded_model = _load_native_flavor(str(mlmodel_dir), model_key)
             print(f"    \u2713 Loaded directly from local path: {mlmodel_dir}")
             return loaded_model
         except Exception as exc:
-            print(f"    Native flavor load from local path failed: {exc}")
+            print(
+                f"    Native flavor load from local path failed: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            if not str(exc):
+                print(
+                    "      (empty message above; see NOTE on file size, "
+                    "or the exception type itself, for what this means)"
+                )
 
             # ---------------------------------------------------------------
             # Strategy 4: raw pickle, last resort
             # ---------------------------------------------------------------
-
-            pkl_path = mlmodel_dir / "model.pkl"
 
             if pkl_path.exists():
                 try:
@@ -546,14 +653,31 @@ def _load_model_from_run(
                     print("    \u2713 Loaded via raw pickle.load")
                     return loaded_model
                 except Exception as exc2:
-                    print(f"    Raw pickle.load failed: {exc2}")
+                    print(
+                        f"    Raw pickle.load failed: "
+                        f"{type(exc2).__name__}: {exc2}"
+                    )
+                    if not str(exc2):
+                        print(
+                            "      (empty message again -- same "
+                            "underlying cause as the attempt above)"
+                        )
+                    print(
+                        "    Full traceback for this last attempt:"
+                    )
+                    print(
+                        "    "
+                        + traceback.format_exc().replace("\n", "\n    ")
+                    )
 
     raise RuntimeError(
         f"Could not load model from run {run_id}.\n"
         f"Tried: MLflow 3 Logged Model (models:/<model_id>), legacy "
         f"runs:/ paths, and direct local artifact inspection. See the "
-        f"diagnostic output above for the real error and exact paths "
-        f"tried at each step."
+        f"diagnostic output above for the real error, the exception "
+        f"TYPE (not just its message -- some exceptions like a bare "
+        f"MemoryError stringify to nothing), file sizes, and exact "
+        f"paths tried at each step."
     )
 
 

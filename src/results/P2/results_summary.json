@@ -27,6 +27,14 @@
       "r2": 0.9133673906326294
     },
     {
+      "variant": "with_trophies",
+      "model": "random_forest",
+      "mae": 2.088208990940529,
+      "mse": 11.670626023357642,
+      "rmse": 3.4162297966263395,
+      "r2": 0.9076737062102681
+    },
+    {
       "variant": "without_trophies",
       "model": "xgboost",
       "mae": 2.5286738872528076,
