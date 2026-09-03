@@ -23,13 +23,14 @@ from mlflow_tracking.tracking_utils import (
 )
 
 from mlflow_tracking.experiments import get_experiment_name
+from sklearn.preprocessing import LabelEncoder
 
 # ============================================================
 # Configuration
 # ============================================================
 
 DATASET_PATH = "data/datasets/clan_performance_classification.parquet"
-N_TRIALS = 30
+N_TRIALS = 3
 RANDOM_STATE = 42
 
 # ============================================================
@@ -44,8 +45,13 @@ data = pd.read_parquet(DATASET_PATH)
 # Features / target
 # ============================================================
 
-X = data.drop(columns = "")
-y = data[""]
+X = data.drop(columns="performance_class").select_dtypes(include="number")
+
+y = data["performance_class"]
+
+#Label encoding
+label_encoder = LabelEncoder()
+y = label_encoder.fit_transform(y)
 
 # ============================================================
 # Train / validation / test split
@@ -153,6 +159,7 @@ def objective(trial):
         
         # Validation metrics
         y_valid_pred = model.predict(X_valid)
+        
 
         valid_metrics = {
             "accuracy": accuracy_score(
@@ -328,14 +335,17 @@ with mlflow_run(
         y_test,
         y_pred_test,
     )
-
+    
+    # Convert predictions back to original labels
+    y_pred_labels = label_encoder.inverse_transform(y_pred_test.astype(int))
+    
     log_metrics(
         final_metrics
     )
 
     log_model_and_artifacts(
         best_model,
-        cm,
+        confusion_matrix = cm,
     )
 
 print()

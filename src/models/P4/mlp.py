@@ -1,14 +1,17 @@
-import torch
-import torch.nn as nn
 import optuna
+import pandas as pd
+
 from sklearn.metrics import (
     accuracy_score,
     balanced_accuracy_score,
-    f1_score,
     confusion_matrix,
+    f1_score,
 )
-import pandas as pd
-import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.neural_network import MLPClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import LabelEncoder, StandardScaler
+
 from mlflow_tracking.tracking_utils import (
     configure_tracking,
     mlflow_run,
@@ -18,9 +21,7 @@ from mlflow_tracking.tracking_utils import (
     log_metrics,
     log_model_and_artifacts,
 )
-
 from mlflow_tracking.experiments import get_experiment_name
-from sklearn.metrics import train_test_split
 
 
 # ============================================================
@@ -31,6 +32,7 @@ DATASET_PATH = "data/datasets/clan_performance_classification.parquet"
 N_TRIALS = 50
 RANDOM_STATE = 42
 
+
 # ============================================================
 # Load dataset
 # ============================================================
@@ -39,13 +41,30 @@ print("Loading dataset...")
 
 data = pd.read_parquet(DATASET_PATH)
 
+
 # ============================================================
 # Features / target
 # ============================================================
 
-X = data.drop(columns="performance_class").select_dtypes(include="number")
+X = data.drop(columns="performance_class").select_dtypes(
+    include=["number", "bool"]
+)
 
 y = data["performance_class"]
+
+
+# ============================================================
+# Encode target
+# ============================================================
+
+label_encoder = LabelEncoder()
+
+y = label_encoder.fit_transform(y)
+
+print("Target classes:")
+for encoded_value, class_name in enumerate(label_encoder.classes_):
+    print(f"  {encoded_value}: {class_name}")
+
 
 # ============================================================
 # Train / validation / test split
@@ -54,16 +73,17 @@ y = data["performance_class"]
 X_train_full, X_test, y_train_full, y_test = train_test_split(
     X,
     y,
-    test_size = 0.2,
-    random_state = RANDOM_STATE,
+    test_size=0.2,
+    random_state=RANDOM_STATE,
 )
 
-X_train, X_valid, y_train, y_valid = train_test_split (
+X_train, X_valid, y_train, y_valid = train_test_split(
     X_train_full,
     y_train_full,
-    test_size = 0.2,
-    random_state = RANDOM_STATE,
+    test_size=0.2,
+    random_state=RANDOM_STATE,
 )
+
 
 # ============================================================
 # MLflow
@@ -73,124 +93,166 @@ configure_tracking()
 
 experiment_name = get_experiment_name("p4")
 
+
 # ============================================================
 # Optuna objective
 # ============================================================
-def objective(trial):
-    params = {
-        "hidden_layer_size": trial.suggest_int(
-            "hiden_layer_size",
-            1,
-            100,
-        ),
-        
-        "activation": trial.suggest_bool(
-            "activation",
-            "relu",
-            "tahn",   
-        ),
-        
-        "alpha": trial.suggest_float(
-            "alpha",
-            0.1,
-            10,
-        ),
-        
-        "learning_rate": trial.suggest_float(
-            "learning_rate",
-            0.1,
-            10,
-        ),
 
+def objective(trial):
+
+    # --------------------------------------------------------
+    # Hyperparameters
+    # --------------------------------------------------------
+
+    hidden_layer_size = trial.suggest_int(
+        "hidden_layer_size",
+        16,
+        128,
+        step=16,
+    )
+
+    activation = trial.suggest_categorical(
+        "activation",
+        ["relu", "tanh"],
+    )
+
+    alpha = trial.suggest_float(
+        "alpha",
+        1e-5,
+        1e-1,
+        log=True,
+    )
+
+    learning_rate_init = trial.suggest_float(
+        "learning_rate_init",
+        1e-4,
+        1e-2,
+        log=True,
+    )
+
+    max_iter = trial.suggest_int(
+        "max_iter",
+        100,
+        300,
+        step=50,
+    )
+
+    batch_size = trial.suggest_categorical(
+        "batch_size",
+        [32, 64, 128, 256],
+    )
+
+    params = {
+        "hidden_layer_sizes": (hidden_layer_size,),
+        "activation": activation,
+        "alpha": alpha,
+        "learning_rate_init": learning_rate_init,
         "solver": "adam",
-        
-        "max_iter_epochs": trial.suggest_int(
-            "max_iter_epochs",
-            50,
-            200,
-        ),
-        
-        "batch_size": trial.suggest_int(
-            "batch_size",
-            32,
-            256,
-        ),
-        
+        "max_iter": max_iter,
+        "batch_size": batch_size,
         "random_state": RANDOM_STATE,
     }
-    
+
+
     # --------------------------------------------------------
     # MLflow run for this Optuna trial
-    # --------------------------------------------------------  
-    
+    # --------------------------------------------------------
+
     with mlflow_run(
         experiment_name,
-        run_name = f"MLP trial {trial.number}",
+        run_name=f"MLP trial {trial.number}",
     ):
-        
-        #Log model params
+
+        # Log model parameters
         log_model_params({
             **params,
             "optuna_trial": trial.number,
         })
-        
-        #Model
-        model = nn(**params)
-        
-        #Training
+
+
+        # ----------------------------------------------------
+        # Model pipeline
+        # ----------------------------------------------------
+
+        model = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                ("mlp", MLPClassifier(**params)),
+            ]
+        )
+
+
+        # ----------------------------------------------------
+        # Training
+        # ----------------------------------------------------
+
         model.fit(
             X_train,
             y_train,
         )
-        
-        # Validation metrics
-        y_valid_pred = model.predict(X_valid)
+
+
+        # ----------------------------------------------------
+        # Validation
+        # ----------------------------------------------------
+
+        y_valid_pred = model.predict(
+            X_valid,
+        )
+
 
         valid_metrics = {
             "accuracy": accuracy_score(
                 y_valid,
                 y_valid_pred,
             ),
+
             "balanced_accuracy": balanced_accuracy_score(
                 y_valid,
                 y_valid_pred,
             ),
+
             "f1_macro": f1_score(
                 y_valid,
                 y_valid_pred,
                 average="macro",
             ),
+
             "f1_weighted": f1_score(
                 y_valid,
                 y_valid_pred,
                 average="weighted",
             ),
-}
+        }
 
-        # Tell Optuna the objective value
+
+        # ----------------------------------------------------
+        # Store validation metrics in Optuna
+        # ----------------------------------------------------
+
         trial.set_user_attr(
             "accuracy",
             valid_metrics["accuracy"],
         )
-        
+
         trial.set_user_attr(
             "balanced_accuracy",
             valid_metrics["balanced_accuracy"],
         )
 
         trial.set_user_attr(
-            "f1_macro",
-            valid_metrics["f1_macro"],
-        )
-
-        trial.set_user_attr(
             "f1_weighted",
             valid_metrics["f1_weighted"],
-        )       
+        )
 
-        # We maximize F1 Macro
-        return valid_metrics["f1_macro"] 
-    
+
+        # ----------------------------------------------------
+        # Optimization objective
+        # ----------------------------------------------------
+
+        return valid_metrics["f1_macro"]
+
+
 # ============================================================
 # Run Optuna
 # ============================================================
@@ -211,6 +273,7 @@ study.optimize(
     n_trials=N_TRIALS,
 )
 
+
 # ============================================================
 # Best parameters
 # ============================================================
@@ -229,6 +292,34 @@ print("Best parameters:")
 for parameter, value in study.best_params.items():
     print(f"  {parameter}: {value}")
 
+
+# ============================================================
+# Prepare final model parameters
+# ============================================================
+
+best_params = {
+    "hidden_layer_sizes": (
+        study.best_params["hidden_layer_size"],
+    ),
+
+    "activation": study.best_params["activation"],
+
+    "alpha": study.best_params["alpha"],
+
+    "learning_rate_init": (
+        study.best_params["learning_rate_init"]
+    ),
+
+    "solver": "adam",
+
+    "max_iter": study.best_params["max_iter"],
+
+    "batch_size": study.best_params["batch_size"],
+
+    "random_state": RANDOM_STATE,
+}
+
+
 # ============================================================
 # Final model
 # ============================================================
@@ -236,9 +327,11 @@ for parameter, value in study.best_params.items():
 print()
 print("Training final model with best parameters...")
 
-best_model = xgb.XGBClassifier(
-    **study.best_params,
-    random_state=RANDOM_STATE,
+best_model = Pipeline(
+    [
+        ("scaler", StandardScaler()),
+        ("mlp", MLPClassifier(**best_params)),
+    ]
 )
 
 best_model.fit(
@@ -246,37 +339,57 @@ best_model.fit(
     y_train_full,
 )
 
+
+# ============================================================
+# Final test prediction
+# ============================================================
+
+y_pred_test = best_model.predict(
+    X_test,
+)
+
+
+# ============================================================
+# Decode target labels
+# ============================================================
+
+y_test_labels = label_encoder.inverse_transform(
+    y_test
+)
+
+y_pred_test_labels = label_encoder.inverse_transform(
+    y_pred_test.astype(int)
+)
+
+
 # ============================================================
 # Final test evaluation
 # ============================================================
 
-y_pred_test = best_model.predict(
-    X_test
-)
-
 final_metrics = {
     "accuracy": accuracy_score(
-        y_test,
-        y_pred_test,
+        y_test_labels,
+        y_pred_test_labels,
     ),
 
     "balanced_accuracy": balanced_accuracy_score(
-        y_test,
-        y_pred_test,
+        y_test_labels,
+        y_pred_test_labels,
     ),
 
     "f1_macro": f1_score(
-        y_test,
-        y_pred_test,
+        y_test_labels,
+        y_pred_test_labels,
         average="macro",
     ),
 
     "f1_weighted": f1_score(
-        y_test,
-        y_pred_test,
+        y_test_labels,
+        y_pred_test_labels,
         average="weighted",
     ),
 }
+
 
 print()
 print("=" * 60)
@@ -285,6 +398,34 @@ print("=" * 60)
 
 for metric, value in final_metrics.items():
     print(f"{metric}: {value}")
+
+
+# ============================================================
+# Confusion matrix
+# ============================================================
+
+cm = confusion_matrix(
+    y_test_labels,
+    y_pred_test_labels,
+    labels=label_encoder.classes_,
+)
+
+
+print()
+print("Confusion Matrix:")
+print(cm)
+
+
+# ============================================================
+# MLflow class metadata
+# ============================================================
+
+class_mapping = {
+    str(encoded_value): class_name
+    for encoded_value, class_name
+    in enumerate(label_encoder.classes_)
+}
+
 
 # ============================================================
 # Log final champion model
@@ -309,26 +450,23 @@ with mlflow_run(
     )
 
     log_model_params({
-        **study.best_params,
+        **best_params,
         "optuna_trials": N_TRIALS,
-        "model_type": "MLP",
+        "model_type": "MLPClassifier",
         "tuning_method": "Optuna",
         "optimization_metric": "f1_macro",
+        "label_mapping": str(class_mapping),
     })
-    
-    cm = confusion_matrix(
-        y_test,
-        y_pred_test,
-    )
 
     log_metrics(
-        final_metrics
+        final_metrics,
     )
 
     log_model_and_artifacts(
         best_model,
         cm,
     )
+
 
 print()
 print("Optimization completed successfully.")

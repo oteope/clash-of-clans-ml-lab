@@ -166,5 +166,6 @@ with mlflow_run(
     # Logging best model and artifacts
     log_model_and_artifacts(
         best_model,
-        cm,
+        confusion_matrix = cm,
+        class_names = ['high' 'low' 'medium'],
     )
