@@ -463,8 +463,9 @@ with mlflow_run(
     )
 
     log_model_and_artifacts(
-        best_model,
-        cm,
+    best_model,
+    confusion_matrix=cm,
+    class_names=label_encoder.classes_.tolist(),
     )
 
 

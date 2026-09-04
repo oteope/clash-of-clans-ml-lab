@@ -11,6 +11,7 @@ from sklearn.metrics import (
     f1_score,
     confusion_matrix,
 )
+from sklearn.preprocessing import LabelEncoder
 
 from mlflow_tracking.tracking_utils import (
     configure_tracking,
@@ -23,15 +24,16 @@ from mlflow_tracking.tracking_utils import (
 )
 
 from mlflow_tracking.experiments import get_experiment_name
-from sklearn.preprocessing import LabelEncoder
+
 
 # ============================================================
 # Configuration
 # ============================================================
 
 DATASET_PATH = "data/datasets/clan_performance_classification.parquet"
-N_TRIALS = 3
+N_TRIALS = 50
 RANDOM_STATE = 42
+
 
 # ============================================================
 # Load dataset
@@ -41,17 +43,32 @@ print("Loading dataset...")
 
 data = pd.read_parquet(DATASET_PATH)
 
+
 # ============================================================
 # Features / target
 # ============================================================
 
-X = data.drop(columns="performance_class").select_dtypes(include="number")
+X = data.drop(columns="performance_class").select_dtypes(
+    include="number"
+)
 
 y = data["performance_class"]
 
-#Label encoding
+
+# ============================================================
+# Label encoding
+# ============================================================
+
 label_encoder = LabelEncoder()
+
 y = label_encoder.fit_transform(y)
+
+print()
+print("Target classes:")
+
+for encoded_value, class_name in enumerate(label_encoder.classes_):
+    print(f"  {encoded_value}: {class_name}")
+
 
 # ============================================================
 # Train / validation / test split
@@ -60,16 +77,17 @@ y = label_encoder.fit_transform(y)
 X_train_full, X_test, y_train_full, y_test = train_test_split(
     X,
     y,
-    test_size = 0.2,
-    random_state = RANDOM_STATE,
+    test_size=0.2,
+    random_state=RANDOM_STATE,
 )
 
-X_train, X_valid, y_train, y_valid = train_test_split (
+X_train, X_valid, y_train, y_valid = train_test_split(
     X_train_full,
     y_train_full,
-    test_size = 0.2,
-    random_state = RANDOM_STATE,
+    test_size=0.2,
+    random_state=RANDOM_STATE,
 )
+
 
 # ============================================================
 # MLflow
@@ -79,11 +97,13 @@ configure_tracking()
 
 experiment_name = get_experiment_name("p4")
 
+
 # ============================================================
 # Optuna objective
 # ============================================================
 
 def objective(trial):
+
     # --------------------------------------------------------
     # Hyperparameter search space
     # --------------------------------------------------------
@@ -137,57 +157,79 @@ def objective(trial):
 
     with mlflow_run(
         experiment_name,
-        run_name=f"Xgboost trial {trial.number}",
+        run_name=f"XGBoost trial {trial.number}",
     ):
-        
-        #Log model params
+
+        # Log model params
+
         log_model_params({
             **params,
             "optuna_trial": trial.number,
         })
-        
-        #Model
+
+
+        # ----------------------------------------------------
+        # Model
+        # ----------------------------------------------------
+
         model = xgb.XGBClassifier(
             **params,
         )
-        
-        #Training
+
+
+        # ----------------------------------------------------
+        # Training
+        # ----------------------------------------------------
+
         model.fit(
             X_train,
             y_train,
         )
-        
+
+
+        # ----------------------------------------------------
         # Validation metrics
-        y_valid_pred = model.predict(X_valid)
-        
+        # ----------------------------------------------------
+
+        y_valid_pred = model.predict(
+            X_valid,
+        )
+
 
         valid_metrics = {
             "accuracy": accuracy_score(
                 y_valid,
                 y_valid_pred,
             ),
+
             "balanced_accuracy": balanced_accuracy_score(
                 y_valid,
                 y_valid_pred,
             ),
+
             "f1_macro": f1_score(
                 y_valid,
                 y_valid_pred,
                 average="macro",
             ),
+
             "f1_weighted": f1_score(
                 y_valid,
                 y_valid_pred,
                 average="weighted",
             ),
-}
+        }
 
-        # Tell Optuna the objective value
+
+        # ----------------------------------------------------
+        # Store validation metrics in Optuna
+        # ----------------------------------------------------
+
         trial.set_user_attr(
             "accuracy",
             valid_metrics["accuracy"],
         )
-        
+
         trial.set_user_attr(
             "balanced_accuracy",
             valid_metrics["balanced_accuracy"],
@@ -201,10 +243,15 @@ def objective(trial):
         trial.set_user_attr(
             "f1_weighted",
             valid_metrics["f1_weighted"],
-        )       
+        )
 
-        # We maximize F1 Macro
+
+        # ----------------------------------------------------
+        # Optimization objective
+        # ----------------------------------------------------
+
         return valid_metrics["f1_macro"]
+
 
 # ============================================================
 # Run Optuna
@@ -226,6 +273,7 @@ study.optimize(
     n_trials=N_TRIALS,
 )
 
+
 # ============================================================
 # Best parameters
 # ============================================================
@@ -244,6 +292,7 @@ print("Best parameters:")
 for parameter, value in study.best_params.items():
     print(f"  {parameter}: {value}")
 
+
 # ============================================================
 # Final model
 # ============================================================
@@ -261,37 +310,57 @@ best_model.fit(
     y_train_full,
 )
 
+
+# ============================================================
+# Final test predictions
+# ============================================================
+
+y_pred_test = best_model.predict(
+    X_test,
+)
+
+
+# ============================================================
+# Convert encoded labels back to original labels
+# ============================================================
+
+y_test_labels = label_encoder.inverse_transform(
+    y_test.astype(int)
+)
+
+y_pred_test_labels = label_encoder.inverse_transform(
+    y_pred_test.astype(int)
+)
+
+
 # ============================================================
 # Final test evaluation
 # ============================================================
 
-y_pred_test = best_model.predict(
-    X_test
-)
-
 final_metrics = {
     "accuracy": accuracy_score(
-        y_test,
-        y_pred_test,
+        y_test_labels,
+        y_pred_test_labels,
     ),
 
     "balanced_accuracy": balanced_accuracy_score(
-        y_test,
-        y_pred_test,
+        y_test_labels,
+        y_pred_test_labels,
     ),
 
     "f1_macro": f1_score(
-        y_test,
-        y_pred_test,
+        y_test_labels,
+        y_pred_test_labels,
         average="macro",
     ),
 
     "f1_weighted": f1_score(
-        y_test,
-        y_pred_test,
+        y_test_labels,
+        y_pred_test_labels,
         average="weighted",
     ),
 }
+
 
 print()
 print("=" * 60)
@@ -300,6 +369,42 @@ print("=" * 60)
 
 for metric, value in final_metrics.items():
     print(f"{metric}: {value}")
+
+
+# ============================================================
+# Final confusion matrix
+# ============================================================
+
+cm = confusion_matrix(
+    y_test_labels,
+    y_pred_test_labels,
+    labels=label_encoder.classes_,
+)
+
+
+print()
+print("Confusion Matrix:")
+print(cm)
+
+
+# ============================================================
+# Label mapping
+# ============================================================
+
+class_mapping = {
+    str(encoded_value): class_name
+    for encoded_value, class_name in enumerate(
+        label_encoder.classes_
+    )
+}
+
+
+print()
+print("Label mapping:")
+
+for encoded_value, class_name in class_mapping.items():
+    print(f"  {encoded_value}: {class_name}")
+
 
 # ============================================================
 # Log final champion model
@@ -317,11 +422,13 @@ with mlflow_run(
         target="performance_class",
     )
 
+
     log_split_config(
         split_strategy="train_test_split",
         test_size=0.2,
         random_seed=RANDOM_STATE,
     )
+
 
     log_model_params({
         **study.best_params,
@@ -329,24 +436,21 @@ with mlflow_run(
         "model_type": "XGBoostClassifier",
         "tuning_method": "Optuna",
         "optimization_metric": "f1_macro",
+        "label_mapping": str(class_mapping),
     })
-    
-    cm = confusion_matrix(
-        y_test,
-        y_pred_test,
-    )
-    
-    # Convert predictions back to original labels
-    y_pred_labels = label_encoder.inverse_transform(y_pred_test.astype(int))
-    
+
+
     log_metrics(
         final_metrics
     )
 
+
     log_model_and_artifacts(
-        best_model,
-        confusion_matrix = cm,
+    best_model,
+    confusion_matrix=cm,
+    class_names=label_encoder.classes_.tolist(),
     )
+
 
 print()
 print("Optimization completed successfully.")
