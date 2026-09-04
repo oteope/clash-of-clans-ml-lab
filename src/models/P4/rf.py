@@ -167,5 +167,5 @@ with mlflow_run(
     log_model_and_artifacts(
         best_model,
         confusion_matrix = cm,
-        class_names = ['high' 'low' 'medium'],
+        class_names = ['high', 'low', 'medium'],
     )
