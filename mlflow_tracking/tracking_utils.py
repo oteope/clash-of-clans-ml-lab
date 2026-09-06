@@ -137,7 +137,7 @@ def log_dataset_context(
     dataset_path: Union[str, Path],
     row_count: int,
     feature_count: int,
-    target: str,
+    target: Optional[str] = None,
     parquet_hash: Optional[str] = None,
     modification_time: Optional[str] = None,
     compute_hash: bool = False,
@@ -145,33 +145,44 @@ def log_dataset_context(
     """
     Log dataset metadata as MLflow params/tags.
 
-    By default, only file size and modification timestamp are logged.
-    SHA-256 hash is computed only when ``compute_hash`` is True or a
-    pre-computed ``parquet_hash`` is provided.
+    The target is optional to support both supervised and unsupervised
+    learning experiments.
     """
     dataset_path = Path(dataset_path)
+
     file_size: Optional[int] = None
+
     if dataset_path.exists():
         stat = dataset_path.stat()
         file_size = stat.st_size
+
         if modification_time is None:
-            modification_time = str(pd.Timestamp(stat.st_mtime, unit="s"))
+            modification_time = str(
+                pd.Timestamp(stat.st_mtime, unit="s")
+            )
 
     if compute_hash and parquet_hash is None and dataset_path.exists():
         parquet_hash = _hash_file(dataset_path)
 
-    mlflow.log_params({
-        "row_count": row_count,
-        "feature_count": feature_count,
-        "target": target,
-    })
+    mlflow.log_params(
+        {
+            "row_count": row_count,
+            "feature_count": feature_count,
+            "target": target or "none",
+        }
+    )
 
     tags = {
         "dataset_path": str(dataset_path),
-        "file_size_bytes": str(file_size) if file_size is not None else "N/A",
-        "parquet_modified_time": modification_time or "N/A",
+        "file_size_bytes": (
+            str(file_size) if file_size is not None else "N/A"
+        ),
+        "parquet_modified_time": (
+            modification_time or "N/A"
+        ),
         "parquet_hash": parquet_hash or "N/A",
     }
+
     mlflow.set_tags(tags)
 
 def log_split_config(
