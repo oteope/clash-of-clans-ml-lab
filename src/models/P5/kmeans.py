@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from sklearn.cluster import KMeans
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
@@ -31,6 +33,10 @@ SILHOUETTE_SAMPLE_SIZE = 50_000
 # Candidate number of clusters
 K_VALUES = range(2, 11)
 
+# Results directory
+RESULTS_DIR = Path("src/models/P5/results_kmeans")
+RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+
 
 # ============================================================
 # Read dataset
@@ -48,9 +54,11 @@ print(f"Number of players: {len(data)}")
 
 # Exclude player identifiers and non-numeric columns.
 # K-Means requires numerical features.
+
 X = data.select_dtypes(include=["number", "bool"]).copy()
 
 print(f"Number of clustering features: {X.shape[1]}")
+
 print("\nFeatures used for clustering:")
 print(X.columns.tolist())
 
@@ -64,10 +72,11 @@ print(X.isna().sum().sum())
 
 print(f"\nDuplicated rows: {X.duplicated().sum()}")
 
-
 # K-Means cannot work with missing values.
 if X.isna().sum().sum() > 0:
-    raise ValueError("The dataset contains missing values in clustering features.")
+    raise ValueError(
+        "The dataset contains missing values in clustering features."
+    )
 
 
 # ============================================================
@@ -91,12 +100,6 @@ configure_tracking()
 
 
 # ============================================================
-# Evaluate different K values
-# ============================================================
-
-results = []
-
-# ============================================================
 # Sample for Silhouette Score
 # ============================================================
 
@@ -110,9 +113,12 @@ sample_indices = rng.choice(
 
 X_silhouette = X_scaled[sample_indices]
 
+
 # ============================================================
-# Evaluate candidate cluster counts
+# Evaluate different K values
 # ============================================================
+
+results = []
 
 print("\nEvaluating candidate cluster counts...")
 
@@ -168,7 +174,10 @@ for k in K_VALUES:
     )
 
 
+# ============================================================
 # Convert results to DataFrame
+# ============================================================
+
 results_df = pd.DataFrame(results)
 
 print("\nClustering evaluation:")
@@ -194,6 +203,18 @@ print(f"Best Silhouette Score: {best_silhouette:.4f}")
 
 
 # ============================================================
+# Save K evaluation results
+# ============================================================
+
+evaluation_path = RESULTS_DIR / "k_evaluation.csv"
+
+results_df.to_csv(
+    evaluation_path,
+    index=False,
+)
+
+
+# ============================================================
 # Elbow plot
 # ============================================================
 
@@ -213,10 +234,14 @@ plt.grid(True)
 
 plt.tight_layout()
 
-elbow_path = "elbow_plot.png"
-plt.savefig(elbow_path, dpi=150)
-plt.show()
+elbow_path = RESULTS_DIR / "elbow_plot.png"
 
+plt.savefig(
+    elbow_path,
+    dpi=150,
+)
+
+plt.show()
 plt.close()
 
 
@@ -240,10 +265,14 @@ plt.grid(True)
 
 plt.tight_layout()
 
-silhouette_path = "silhouette_scores.png"
-plt.savefig(silhouette_path, dpi=150)
-plt.show()
+silhouette_path = RESULTS_DIR / "silhouette_scores.png"
 
+plt.savefig(
+    silhouette_path,
+    dpi=150,
+)
+
+plt.show()
 plt.close()
 
 
@@ -300,6 +329,41 @@ print(cluster_profile)
 
 
 # ============================================================
+# Save cluster analysis results
+# ============================================================
+
+cluster_profile_path = RESULTS_DIR / "cluster_profile.csv"
+cluster_sizes_path = RESULTS_DIR / "cluster_sizes.csv"
+
+cluster_profile.to_csv(
+    cluster_profile_path
+)
+
+cluster_sizes.to_csv(
+    cluster_sizes_path,
+    header=["player_count"],
+)
+
+
+# ============================================================
+# Save clustering dataset
+# ============================================================
+
+output_path = (
+    RESULTS_DIR / "player_clustering_with_clusters.parquet"
+)
+
+data_with_clusters.to_parquet(
+    output_path,
+    index=False,
+)
+
+print(
+    f"\nClustering dataset saved to: {output_path}"
+)
+
+
+# ============================================================
 # MLflow experiment
 # ============================================================
 
@@ -347,49 +411,22 @@ with mlflow_run(
     # Artifacts
     # --------------------------------------------------------
 
-    cluster_profile_path = "cluster_profile.csv"
-    cluster_sizes_path = "cluster_sizes.csv"
-    evaluation_path = "k_evaluation.csv"
-
-    cluster_profile.to_csv(
-        cluster_profile_path
-    )
-
-    cluster_sizes.to_csv(
-        cluster_sizes_path,
-        header=["player_count"],
-    )
-
-    results_df.to_csv(
-        evaluation_path,
-        index=False,
-    )
-
     log_model_and_artifacts(
         final_model,
         extra_artifacts={
-            "elbow_plot": elbow_path,
-            "silhouette_plot": silhouette_path,
-            "cluster_profile": cluster_profile_path,
-            "cluster_sizes": cluster_sizes_path,
-            "k_evaluation": evaluation_path,
+            str(elbow_path): "plots",
+            str(silhouette_path): "plots",
+            str(cluster_profile_path): "data",
+            str(cluster_sizes_path): "data",
+            str(evaluation_path): "data",
+            str(output_path): "data",
         },
     )
 
 
 # ============================================================
-# Save clustering results
+# Final message
 # ============================================================
 
-output_path = "data/datasets/player_clustering_with_clusters.parquet"
-
-data_with_clusters.to_parquet(
-    output_path,
-    index=False,
-)
-
-print(
-    f"\nClustering dataset saved to: {output_path}"
-)
-
 print("\nP5 K-Means completed successfully.")
+print(f"All local results saved to: {RESULTS_DIR}")
