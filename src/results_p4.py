@@ -50,10 +50,15 @@ if str(ROOT_DIR) not in sys.path:
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
+#
+# Fill these in manually with the real Run IDs from your MLflow experiment.
+# Left as None on purpose -- a model with run_id=None is skipped cleanly
+# (see main()) instead of being attempted with a made-up ID.
+# =============================================================================
 
 MODEL_RUN_IDS = {
     "random_forest": "c5fb3f9cd6404e55aab6c81da2d6e7a0",
-    "xgboost": "cbd456283297409db16a46aa91a1a05e",
+    "xgboost":"3cfa3696adf9476888419a9ef8d53ac0" ,
     "mlp": "c85903718da0498b95b3d8b75e02f194",
 }
 
@@ -779,6 +784,21 @@ def _extract_feature_importance(
     model: Any,
     feature_names: List[str],
 ) -> Optional[pd.Series]:
+    """
+    Returns feature_importances_ indexed by name, or None if the model
+    doesn't expose it.
+
+    Prefers the model's OWN feature_names_in_ over the shared
+    feature_names list built from X_test. Confirmed the hard way: if
+    this specific model was trained on a different column subset than
+    the other models -- the same kind of per-model inconsistency already
+    found in P2 (capital_contributions present for some P2 models,
+    absent for others) -- feature_importances_ comes back shorter than
+    the shared list, and indexing it with the wrong names either raises
+    ValueError: Length of values (N) does not match length of index (M),
+    or, worse, would silently mislabel importances if the lengths
+    happened to match by coincidence.
+    """
 
     importances = getattr(
         model,
@@ -789,10 +809,47 @@ def _extract_feature_importance(
     if importances is None:
         return None
 
-    return pd.Series(
-        importances,
-        index=feature_names,
+    own_feature_names = getattr(
+        model,
+        "feature_names_in_",
+        None,
     )
+
+    if own_feature_names is not None:
+
+        own_feature_names = list(own_feature_names)
+
+        if len(own_feature_names) == len(importances):
+
+            if set(own_feature_names) != set(feature_names):
+                print(
+                    f"    NOTE: this model's features differ from the "
+                    f"shared feature set ({len(own_feature_names)} vs "
+                    f"{len(feature_names)} columns) -- it was likely "
+                    f"trained on a different column subset than the "
+                    f"other models. Using this model's own feature "
+                    f"names for its importance values."
+                )
+
+            return pd.Series(
+                importances,
+                index=own_feature_names,
+            )
+
+    if len(importances) == len(feature_names):
+        return pd.Series(
+            importances,
+            index=feature_names,
+        )
+
+    print(
+        f"    Skipping feature importance: feature_importances_ has "
+        f"{len(importances)} entries, which matches neither this "
+        f"model's own feature_names_in_ nor the {len(feature_names)} "
+        f"shared feature columns."
+    )
+
+    return None
 
 
 # =============================================================================

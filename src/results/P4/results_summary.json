@@ -1,0 +1,82 @@
+{
+  "dataset": "C:\\Users\\Usuario\\Desktop\\Clash of Clans ML Lab\\data\\datasets\\clan_performance_classification.parquet",
+  "target": "performance_class",
+  "classes": [
+    "low",
+    "medium",
+    "high"
+  ],
+  "key_class": "high",
+  "test_size": 0.2,
+  "random_state": 42,
+  "models": {
+    "random_forest": "c5fb3f9cd6404e55aab6c81da2d6e7a0",
+    "xgboost": "3cfa3696adf9476888419a9ef8d53ac0",
+    "mlp": "c85903718da0498b95b3d8b75e02f194"
+  },
+  "results": [
+    {
+      "model": "random_forest",
+      "accuracy": 0.4811441355065516,
+      "balanced_accuracy": 0.48106403563564215,
+      "f1_weighted": 0.4774631274850784,
+      "f1_macro": 0.4773336442174922,
+      "precision_weighted": 0.4761061449098189,
+      "recall_weighted": 0.4811441355065516,
+      "roc_auc_ovr_weighted": 0.6736500966648075,
+      "log_loss": 1.0024654260674237,
+      "low_precision": 0.5342349957734573,
+      "low_recall": 0.607984607984608,
+      "low_f1": 0.5687289088863892,
+      "medium_precision": 0.37910922587486745,
+      "medium_recall": 0.3442465093885412,
+      "medium_f1": 0.3608377491799142,
+      "high_precision": 0.514456630109671,
+      "high_recall": 0.49096098953377737,
+      "high_f1": 0.5024342745861733,
+      "run_id": "c5fb3f9cd6404e55aab6c81da2d6e7a0"
+    },
+    {
+      "model": "mlp",
+      "accuracy": 0.24368807925854905,
+      "balanced_accuracy": 0.24356650311419603,
+      "f1_weighted": 0.2396780522190023,
+      "f1_macro": 0.23944314956075888,
+      "precision_weighted": 0.24053127698071644,
+      "recall_weighted": 0.24368807925854905,
+      "roc_auc_ovr_weighted": 0.4111334991886353,
+      "log_loss": 1.4759222265247895,
+      "low_precision": 0.11546961325966851,
+      "low_recall": 0.10052910052910052,
+      "low_f1": 0.10748264335304705,
+      "medium_precision": 0.26876876876876876,
+      "medium_recall": 0.34472797303803565,
+      "medium_f1": 0.302045981860367,
+      "high_precision": 0.336322869955157,
+      "high_recall": 0.285442435775452,
+      "high_f1": 0.30880082346886256,
+      "run_id": "c85903718da0498b95b3d8b75e02f194"
+    },
+    {
+      "model": "xgboost",
+      "accuracy": 0.23873441994247363,
+      "balanced_accuracy": 0.23859449421626566,
+      "f1_weighted": 0.2387372447373266,
+      "f1_macro": 0.2385123474741948,
+      "precision_weighted": 0.24090545060198093,
+      "recall_weighted": 0.23873441994247363,
+      "roc_auc_ovr_weighted": 0.4066067691871177,
+      "log_loss": 1.3431729078292847,
+      "low_precision": 0.12873225648556044,
+      "low_recall": 0.1265031265031265,
+      "low_f1": 0.12760795730228044,
+      "medium_precision": 0.2648648648648649,
+      "medium_recall": 0.306692344727973,
+      "medium_f1": 0.28424810352521196,
+      "high_precision": 0.3281767955801105,
+      "high_recall": 0.2825880114176974,
+      "high_f1": 0.30368098159509205,
+      "run_id": "3cfa3696adf9476888419a9ef8d53ac0"
+    }
+  ]
+}

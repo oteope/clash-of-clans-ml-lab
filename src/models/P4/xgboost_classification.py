@@ -49,7 +49,7 @@ data = pd.read_parquet(DATASET_PATH)
 # ============================================================
 
 X = data.drop(columns="performance_class").select_dtypes(
-    include="number"
+    include=["number", "bool"]
 )
 
 y = data["performance_class"]
