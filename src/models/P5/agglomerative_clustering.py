@@ -30,7 +30,7 @@ DATASET_PATH = "data/datasets/player_clustering.parquet"
 
 RANDOM_STATE = 42
 
-K_VALUES = range(2, 11)
+K_VALUES = range(2, 7)
 
 SILHOUETTE_SAMPLE_SIZE = 50_000
 
