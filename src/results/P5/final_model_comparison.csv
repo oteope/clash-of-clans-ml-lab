@@ -1,0 +1,3 @@
+algorithm,n_clusters,silhouette_score,silhouette_score_source,silhouette_recomputed_n_samples,silhouette_recomputed_was_sampled,inertia,noise_count,noise_pct,n_samples,run_id
+kmeans,2,0.39260870071705845,mlflow,50000,True,15221623.778984105,,,836830,0ba883acb3ed4c478916a1c36e03f5d5
+dbscan,160,0.137268099190518,mlflow,50000,True,,769743.0,91.98,836830,0ca121fe6aa64342ab4630059c5a0bf9

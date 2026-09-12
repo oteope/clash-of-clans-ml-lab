@@ -1,0 +1,113 @@
+{
+  "dataset": "C:\\Users\\Usuario\\Desktop\\Clash of Clans ML Lab\\data\\datasets\\player_clustering.parquet",
+  "algorithms": {
+    "kmeans": "0ba883acb3ed4c478916a1c36e03f5d5",
+    "dbscan": "0ca121fe6aa64342ab4630059c5a0bf9",
+    "agglomerative": null
+  },
+  "noise_label": -1,
+  "pca": {
+    "n_players_visualized": 836830,
+    "n_features": 30,
+    "n_components": 2,
+    "explained_variance_ratio": [
+      0.5460595488548279,
+      0.08548545092344284
+    ]
+  },
+  "silhouette_sample_size_limit": 50000,
+  "comparison": [
+    {
+      "algorithm": "kmeans",
+      "n_clusters": 2,
+      "silhouette_score": 0.39260870071705845,
+      "silhouette_score_source": "mlflow",
+      "silhouette_recomputed_n_samples": 50000,
+      "silhouette_recomputed_was_sampled": true,
+      "inertia": 15221623.778984105,
+      "noise_count": NaN,
+      "noise_pct": NaN,
+      "n_samples": 836830,
+      "run_id": "0ba883acb3ed4c478916a1c36e03f5d5"
+    },
+    {
+      "algorithm": "dbscan",
+      "n_clusters": 160,
+      "silhouette_score": 0.137268099190518,
+      "silhouette_score_source": "mlflow",
+      "silhouette_recomputed_n_samples": 50000,
+      "silhouette_recomputed_was_sampled": true,
+      "inertia": NaN,
+      "noise_count": 769743.0,
+      "noise_pct": 91.98,
+      "n_samples": 836830,
+      "run_id": "0ca121fe6aa64342ab4630059c5a0bf9"
+    }
+  ],
+  "run_metadata": {
+    "kmeans": {
+      "run_id": "0ba883acb3ed4c478916a1c36e03f5d5",
+      "status": "FINISHED",
+      "params": {
+        "row_count": "836830",
+        "feature_count": "30",
+        "target": "none",
+        "model__algorithm": "KMeans",
+        "model__n_clusters": "2",
+        "model__random_state": "42",
+        "model__n_init": "auto",
+        "model__scaler": "StandardScaler"
+      },
+      "metrics": {
+        "inertia": 15221623.778984105,
+        "silhouette_score": 0.39260870071705845
+      },
+      "tags": {
+        "project": "clash-of-clans-ml-lab",
+        "tracking_version": "1.0.0",
+        "problem_name": "p5_player_clustering",
+        "dataset_path": "data\\datasets\\player_clustering.parquet",
+        "file_size_bytes": "63270626",
+        "parquet_modified_time": "2026-08-18 19:01:38.086340189",
+        "parquet_hash": "N/A"
+      },
+      "logged_silhouette_score": 0.39260870071705845,
+      "logged_silhouette_sample_size": null,
+      "logged_inertia": 15221623.778984105,
+      "logged_n_clusters": null
+    },
+    "dbscan": {
+      "run_id": "0ca121fe6aa64342ab4630059c5a0bf9",
+      "status": "FINISHED",
+      "params": {
+        "row_count": "836830",
+        "feature_count": "30",
+        "target": "none",
+        "model__algorithm": "DBSCAN",
+        "model__eps": "0.3",
+        "model__min_samples": "20",
+        "model__scaler": "StandardScaler",
+        "model__silhouette_sample_size": "50000"
+      },
+      "metrics": {
+        "n_clusters": 160.0,
+        "noise_count": 769743.0,
+        "noise_percentage": 91.98319849909778,
+        "silhouette_score": 0.137268099190518
+      },
+      "tags": {
+        "project": "clash-of-clans-ml-lab",
+        "tracking_version": "1.0.0",
+        "problem_name": "p5_player_clustering",
+        "dataset_path": "data\\datasets\\player_clustering.parquet",
+        "file_size_bytes": "63270626",
+        "parquet_modified_time": "2026-08-18 19:01:38.086340189",
+        "parquet_hash": "N/A"
+      },
+      "logged_silhouette_score": 0.137268099190518,
+      "logged_silhouette_sample_size": null,
+      "logged_inertia": null,
+      "logged_n_clusters": 160.0
+    }
+  }
+}
