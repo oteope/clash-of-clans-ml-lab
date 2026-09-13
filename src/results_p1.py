@@ -36,6 +36,19 @@ if str(ROOT_DIR) not in sys.path:
 
 
 # =============================================================================
+# DATASET PATH
+# =============================================================================
+#
+# Same file p1_rf.py (and every other P1 training script) loads directly.
+# _build_dataset() below loads this as-is, rather than reconstructing it,
+# specifically so evaluation always uses the exact data a given run was
+# trained on -- see _build_dataset()'s docstring for the full reasoning.
+# =============================================================================
+
+DATASET_PATH = ROOT_DIR / "data" / "datasets" / "role_classification.parquet"
+
+
+# =============================================================================
 # PROJECT INFRASTRUCTURE
 # =============================================================================
 
@@ -443,35 +456,40 @@ def _get_consistent_run_config(
 
 def _build_dataset() -> pd.DataFrame:
     """
-    Rebuild the exact P1 role classification dataset.
+    Load the exact dataset used at training time.
+
+    CHANGED: this used to reconstruct the dataset live via
+    load_small_tables() -> build_player_features_from_files() ->
+    compute_clan_relative_features() -> assemble_role_dataset() -- the
+    same function sequence, in the same order, that build_role_dataset.py
+    uses to originally produce role_classification.parquet.
+
+    That reconstruction chain was checked line by line and is row-order
+    DETERMINISTIC: every merge in it is how="left" and every groupby
+    used is .transform() -- both guaranteed by pandas to preserve the
+    left-hand side's row order. So a code bug reordering rows was ruled
+    out, not assumed away.
+
+    What is NOT guaranteed is that data/processed/*.parquet is still the
+    same data it was when role_classification.parquet was generated. If
+    it has been re-collected or updated since (player stats change,
+    roles change as players get promoted/demoted), a live reconstruction
+    is faithfully re-running the correct pipeline over DIFFERENT data --
+    same code, same algorithm, different snapshot. Loading the frozen
+    parquet directly, exactly like every P1 training script does,
+    removes that entire class of risk regardless of whether the
+    reconstruction pipeline is itself still faithful today.
     """
 
-    small_tables = load_small_tables()
+    if not DATASET_PATH.exists():
+        raise FileNotFoundError(
+            f"Dataset not found: {DATASET_PATH}. This must be the exact "
+            f"file used at training time (p1_rf.py and the other P1 "
+            f"training scripts load this same path directly) -- it is "
+            f"loaded as-is here, not reconstructed."
+        )
 
-    clans_df = small_tables["clans"]
-    clan_members_df = small_tables["clan_members"]
-
-    # Build player-level features
-    pf = build_player_features_from_files(
-        PROCESSED_DIR,
-        batch_size=100_000,
-    )
-
-    # Build player-clan relative features
-    pcf = compute_clan_relative_features(
-        clan_members_df,
-        pf,
-    )
-
-    # Assemble final dataset
-    dataset = assemble_role_dataset(
-        pf=pf,
-        pcf=pcf,
-        clan_members_df=clan_members_df,
-        clans_df=clans_df,
-    )
-
-    return dataset
+    return pd.read_parquet(DATASET_PATH)
 
 
 # =============================================================================

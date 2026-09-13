@@ -1085,3 +1085,684 @@ P3 highlighted several important lessons from the project:
 - The final model achieved an **R² of 0.2206**, showing that the problem remained difficult despite using non-linear models and hyperparameter optimization.
 - Feature importance identified **clan rank** as one of the strongest predictors.
 - The experiment demonstrated that **not every real-world problem contains enough predictable information for machine learning to produce highly accurate results**.
+
+### P4 — Clan Performance Classification
+
+#### Objective
+
+The objective of **P4** is exactly the same as in P3: to investigate whether a clan's war performance can be explained by its characteristics and available clan-level information.
+
+The difference is how the problem is formulated.
+
+While **P3 treats `war_success_rate` as a continuous target and approaches the problem as regression**, P4 transforms the same underlying performance measure into three discrete classes:
+
+```text
+low
+medium
+high
+```
+
+The central question therefore remains:
+
+> **Can a clan's war performance be classified based on its characteristics and available clan-level information?**
+
+This reformulation was motivated by the difficulty observed in P3. Predicting an exact continuous value for `war_success_rate` proved to be a relatively difficult task, so P4 investigates whether the problem becomes more tractable when performance is divided into meaningful categories.
+
+#### Dataset Construction
+
+P4 uses the **same underlying dataset and feature set as P3**.
+
+However, P4 has its own dataset because the target variable is transformed from the continuous `war_success_rate` used in P3 into a categorical variable called:
+
+```text
+performance_class
+```
+
+The transformation is performed using two configurable thresholds:
+
+```text
+war_success_rate < low_threshold
+        ↓
+       low
+
+low_threshold ≤ war_success_rate < high_threshold
+        ↓
+     medium
+
+war_success_rate ≥ high_threshold
+        ↓
+      high
+```
+
+The classification dataset is therefore constructed from the P3 regression dataset while preserving the same predictive information.
+
+The only fundamental difference is the target representation:
+
+```text
+P3
+war_success_rate
+      ↓
+Continuous value
+      ↓
+Regression
+```
+
+```text
+P4
+war_success_rate
+      ↓
+low / medium / high
+      ↓
+Classification
+```
+
+As in P3, variables that directly represent war outcomes are excluded from the predictive features. This includes variables such as:
+
+```text
+war_wins
+war_losses
+war_ties
+war_win_streak
+war_points
+war_total
+war_success_rate
+win_rate
+loss_rate
+tie_rate
+```
+
+This prevents the models from directly using the information from which the target performance was constructed.
+
+#### Target Distribution
+
+Unlike P1, the class distribution in P4 was deliberately balanced.
+
+This was possible because the class boundaries could be controlled through the thresholds used to transform `war_success_rate`.
+
+The resulting distribution was approximately:
+
+| Class | Proportion |
+|---|---:|
+| Medium | 33.42% |
+| Low | 33.32% |
+| High | 33.25% |
+
+This was an intentional design decision.
+
+In P1, the `leader` class was naturally much rarer because a clan can only have one leader. In P4, the target definition itself could be adjusted, so the classes were balanced to avoid introducing an unnecessary class-imbalance problem.
+
+With three approximately equally represented classes, a random classifier would achieve an accuracy of roughly **33.3%**, providing a useful baseline for interpreting the results.
+
+#### Models
+
+Three classification approaches were evaluated:
+
+- Random Forest
+- XGBoost
+- Multi-Layer Perceptron (MLP)
+
+Random Forest and XGBoost were included as tree-based approaches already used elsewhere in the project.
+
+The **MLP** was introduced specifically in P4 to explore a different modelling approach.
+
+Rather than choosing it because it was expected to perform better beforehand, it was added after investigating whether a neural-network-based classifier could be integrated into the existing workflow using **scikit-learn and Optuna**, without requiring a separate PyTorch implementation.
+
+This provided another perspective on the same problem and expanded the range of models evaluated in the ML Lab.
+
+#### Hyperparameter Optimization
+
+Hyperparameter optimization was performed using **Optuna**.
+
+Both XGBoost and MLP were given **50 optimization trials**.
+
+The purpose of using 50 trials was not only to search for better hyperparameters, but also to investigate whether increasing the number of trials could provide a meaningful improvement compared with the smaller searches used in other problems.
+
+This was part of evaluating the practical trade-off between **optimization effort and model performance**.
+
+Random Forest was evaluated separately without the same 50-trial Optuna search.
+
+#### Evaluation
+
+Because the dataset contains three balanced classes, several classification metrics were used:
+
+- Accuracy
+- Balanced Accuracy
+- Macro F1
+- Weighted F1
+
+**Macro F1** is particularly useful for this problem because it gives equal importance to all three classes instead of allowing the overall score to be dominated by the most frequent class.
+
+#### Results
+
+| Model | Accuracy | Balanced Accuracy | F1 Macro | F1 Weighted |
+|---|---:|---:|---:|---:|
+| Random Forest | 0.4811 | 0.4811 | 0.4773 | 0.4775 |
+| XGBoost + Optuna | 0.4986 | 0.4985 | 0.4925 | 0.4926 |
+| **MLP + Optuna** | **0.5037** | **0.5038** | **0.4962** | **0.4962** |
+
+The **MLP + Optuna** configuration achieved the best overall results, although the difference between the three models was relatively small.
+
+With approximately balanced classes, the random baseline is around 33.3%. The best model achieved approximately **50.4% accuracy**, indicating that the models were able to capture meaningful information about clan performance, while also showing that the problem remained difficult.
+
+#### Analysis
+
+P4 produced substantially better results than the regression formulation explored in P3.
+
+This suggests that, for this particular problem, predicting an exact value of `war_success_rate` is considerably more difficult than determining whether a clan belongs to a lower, intermediate or higher performance category.
+
+The introduction of the **medium** class also makes the problem more nuanced.
+
+The confusion matrices show that the models can identify the **low** and **high** classes relatively well, while the main difficulty is distinguishing the **medium** class from the two extremes.
+
+This behaviour is intuitive: a clan near the boundary between performance categories can share characteristics with both neighbouring classes, making it harder for the model to assign a clear label.
+
+Therefore, the classification formulation does not simply make the problem "easy". Instead, it changes the type of uncertainty the model has to deal with.
+
+#### From Regression to Classification
+
+The comparison between P3 and P4 demonstrated an important modelling consideration:
+
+> **When an exact continuous target is difficult to predict, reformulating the problem into meaningful categories can make the task more tractable.**
+
+Instead of asking the model to predict an exact value such as:
+
+```text
+0.63
+```
+
+the problem can ask whether the clan belongs to:
+
+```text
+low
+medium
+high
+```
+
+This also allows additional intermediate classes to be introduced when a simple binary distinction would be too coarse.
+
+In P4, the `medium` category provides information about clans whose performance is neither clearly low nor clearly high, although this also makes classification more difficult.
+
+#### What P4 Demonstrated
+
+P4 demonstrated that **problem formulation can be as important as model selection**.
+
+Using the same underlying predictive information as P3 but changing the target representation produced a considerably more tractable machine learning problem.
+
+The results also showed that adding more sophisticated models does not necessarily produce dramatically different performance. MLP achieved the best result, but only by a relatively small margin over XGBoost.
+
+The problem therefore remains limited by the predictive information available in the dataset rather than simply by the choice of algorithm.
+
+#### Key Takeaways
+
+- P4 uses the **same underlying data and predictive features as P3**, but creates a separate classification dataset by replacing `war_success_rate` with `performance_class`.
+- The target is divided into **low, medium and high** performance classes using configurable thresholds.
+- The three classes were deliberately balanced to avoid unnecessary class-imbalance issues.
+- Random Forest, XGBoost and MLP were evaluated.
+- XGBoost and MLP were optimized with **50 Optuna trials**.
+- **MLP + Optuna** achieved the best result with **50.37% accuracy and 49.62% macro F1**.
+- The approximately 50% accuracy is meaningfully above the ~33.3% random baseline for three balanced classes.
+- Low and high performance were easier to classify than the medium class.
+- Reformulating a difficult regression problem as a classification problem can make the target more tractable.
+- The experiment reinforced the importance of **choosing an appropriate problem formulation**, rather than assuming that a more complex model will always solve a difficult prediction problem.
+
+### P5 — Player Clustering
+
+#### Objective
+
+The objective of **P5** is to investigate whether Clash of Clans players can be divided into different groups based on their characteristics.
+
+Unlike P1–P4, there is no predefined target variable. Instead, the goal is to discover whether the dataset contains naturally occurring patterns that can be used to identify different types of players.
+
+The central question was:
+
+> **What types of players can be identified based on their characteristics and progression?**
+
+This makes P5 an **unsupervised learning problem**, where the models are not given predefined labels and must instead discover structure within the data.
+
+Some of the most informative characteristics include variables such as:
+
+- Town Hall level
+- Player progression
+- League and trophy-related statistics
+- Donations and donation ratios
+- War activity
+- Clan Capital contributions
+- Troop, hero, spell and equipment progression
+
+These features capture different aspects of a player's level of progression and activity within the game.
+
+#### Dataset
+
+P5 uses the largest dataset in the project, containing approximately **836,830 players**.
+
+The clustering dataset contains **31 columns**, of which **30 features** are used for clustering.
+
+The features describe different aspects of player progression, activity and gameplay.
+
+The dataset does not contain a target variable because the objective is to discover the groups directly from the feature space.
+
+An additional analysis showed **370 duplicated feature rows**. These were retained because they can represent different players who happen to have exactly the same values across all clustering features. Removing them would therefore remove valid player observations rather than simply removing accidental duplicate records.
+
+#### Preprocessing
+
+Before applying the clustering algorithms, the features were standardized using `StandardScaler`.
+
+This step was particularly important because the dataset contains variables with very different numerical scales.
+
+For example, features such as:
+
+```text
+town_hall_level
+donation_ratio
+clan_capital_contributions
+best_trophies
+```
+
+operate on completely different scales.
+
+Distance-based clustering algorithms are sensitive to these differences. Without scaling, variables with larger numerical ranges could dominate the distance calculations and disproportionately influence the resulting clusters.
+
+Therefore, the features were standardized before applying the clustering algorithms.
+
+#### K-Means
+
+K-Means was used as the main clustering approach.
+
+Different values of **K from 2 to 10** were evaluated to determine how the structure of the dataset changed depending on the number of clusters.
+
+The **Silhouette Score** was used to evaluate the resulting cluster structures.
+
+Because calculating the Silhouette Score over the complete dataset would be computationally expensive and would provide little additional practical value for this experiment, a sample of **50,000 players** was used for the metric calculation.
+
+This made the evaluation substantially more manageable while still providing a representative estimate of cluster quality.
+
+The best configuration was:
+
+| Parameter | Value |
+|---|---:|
+| Number of clusters | **2** |
+| Silhouette Score | **0.3926** |
+
+The resulting clusters contained:
+
+| Cluster | Players |
+|---|---:|
+| Cluster 0 | 404,225 |
+| Cluster 1 | 432,605 |
+
+The relatively balanced cluster sizes indicate that K-Means did not simply isolate a small group of unusual players while assigning almost everyone else to a single cluster.
+
+#### Cluster Analysis
+
+The two clusters can be interpreted as two broad player profiles.
+
+**Cluster 0 — Higher progression and activity**
+
+The first cluster contains players with substantially higher values across many progression and activity-related features.
+
+For example, compared with the global mean, this cluster has considerably higher:
+
+- Town Hall level
+- Experience level
+- Best trophies
+- War stars
+- Donations
+- Clan Capital contributions
+- Troop levels and counts
+- Hero levels
+- Spell and equipment progression
+- Combat activity
+- Donation ratio
+
+For example:
+
+| Feature | Cluster 0 | Cluster 1 |
+|---|---:|---:|
+| Town Hall level | 16.16 | 10.46 |
+| Experience level | 202.77 | 84.61 |
+| Best trophies | 4361.11 | 1578.34 |
+| War stars | 1420.74 | 205.21 |
+| Donations | 215.89 | 14.07 |
+| Clan Capital contributions | 1,812,094 | 144,682 |
+| Donation ratio | 0.853 | 0.083 |
+| Hero mean level | 49.97 | 19.38 |
+| Troop count | 72.54 | 42.33 |
+
+This cluster can therefore be broadly interpreted as containing **more progressed and/or more active players**.
+
+**Cluster 1 — Lower progression and activity**
+
+The second cluster shows substantially lower values across most progression and activity-related features.
+
+For example, it has lower:
+
+- Town Hall level
+- Experience level
+- War activity
+- Donations
+- Clan Capital contributions
+- Troop and hero progression
+- Equipment progression
+- Combat activity
+- Donation ratio
+
+It can therefore be broadly interpreted as a group of **less progressed and/or less active players**.
+
+An interesting exception is the current trophy count, where Cluster 1 has a slightly higher mean than Cluster 0. This highlights that player profiles cannot necessarily be reduced to a single progression variable such as trophies.
+
+The clustering instead captures a broader combination of progression and activity characteristics.
+
+#### DBSCAN
+
+DBSCAN was introduced to investigate whether the dataset contained more irregular or differently shaped groups that K-Means might not capture effectively.
+
+Unlike K-Means, DBSCAN does not require the number of clusters to be specified in advance and can identify observations considered to be noise.
+
+A total of **21 configurations** were evaluated.
+
+The best configuration obtained:
+
+| Parameter | Value |
+|---|---:|
+| `eps` | 0.3 |
+| `min_samples` | 20 |
+| Number of clusters | 160 |
+| Noise points | 769,743 |
+| Noise proportion | 91.98% |
+| Silhouette Score | 0.1373 |
+
+Although DBSCAN identified 160 different groups, the result was not considered successful because approximately **92% of the players were classified as noise**.
+
+The purpose of using DBSCAN was to investigate whether it could discover more diverse player groups than K-Means. Instead, the algorithm produced a highly fragmented structure while leaving the vast majority of the dataset outside the clusters.
+
+This suggests that the dataset did not fit the assumptions of DBSCAN particularly well at this scale and parameterization.
+
+The PCA visualization also reinforced this conclusion. Rather than identifying dense regions as clusters and isolated observations as noise, DBSCAN classified a very large proportion of the dataset as noise.
+
+Therefore, DBSCAN was considered a **negative result** for this particular dataset.
+
+#### Agglomerative Clustering
+
+Agglomerative Clustering was also investigated as another alternative clustering approach.
+
+However, applying it to the complete dataset revealed a major computational limitation.
+
+The dataset contains more than **836,000 players**, making the number of pairwise relationships extremely large. Running the algorithm on the full dataset would require approximately **2.55 TiB of memory**, making the experiment impractical on the available hardware.
+
+The issue was therefore not an implementation error, but a consequence of the computational requirements of applying the algorithm to a dataset of this scale.
+
+Although code for Agglomerative Clustering was implemented, the full experiment was not executed.
+
+Reducing the dataset to a smaller subset was considered, but selecting a representative subset would introduce another problem: the dataset contains many dimensions and player profiles with substantial variation, making the process of manually selecting a smaller group of players representative of the complete population unnecessary for the objective of this experiment.
+
+For this reason, Agglomerative Clustering was left as a documented scalability limitation rather than forcing an experiment on an arbitrarily reduced dataset.
+
+#### PCA Visualization
+
+PCA was used to visualize the clustering structure and provide a lower-dimensional representation of the feature space.
+
+The PCA visualization of the K-Means results supported the interpretation obtained from the cluster statistics, showing the separation between the two broad player profiles.
+
+The DBSCAN visualization was particularly informative because it showed the limitations of the resulting clustering.
+
+A more useful DBSCAN result would have been expected to identify dense regions of players as clusters while treating relatively isolated observations as noise. Instead, the configuration classified most of the dataset as noise.
+
+This provided a visual confirmation that the DBSCAN result was not useful for describing the player population.
+
+#### Model Comparison
+
+The three approaches provided very different outcomes:
+
+| Method | Result |
+|---|---|
+| **K-Means** | 2 meaningful and relatively balanced clusters |
+| **DBSCAN** | 160 clusters but ~91.98% of players classified as noise |
+| **Agglomerative** | Not feasible on the complete dataset due to memory requirements |
+
+K-Means was therefore the most useful approach for this dataset.
+
+The results also demonstrate that clustering algorithms can behave very differently when applied to the same feature space. A method producing more clusters is not necessarily producing a better representation of the underlying data.
+
+#### Analysis
+
+The main result of P5 is that the player population can be divided into two broad groups based on a combination of progression and activity-related characteristics.
+
+The clustering did not simply separate players according to one variable. Instead, the differences appear across many dimensions simultaneously.
+
+Features such as **Town Hall level** provide an indication of game progression, while variables such as **donation ratio**, donations, war activity and Clan Capital contributions provide additional information about player activity.
+
+The resulting clusters therefore represent broader player profiles rather than a single-dimensional ranking.
+
+P5 also demonstrated the importance of evaluating unsupervised learning results beyond simply looking at the number of clusters produced.
+
+DBSCAN generated **160 clusters**, which might initially appear more informative than K-Means producing only two. However, the fact that almost 92% of observations were classified as noise made the result substantially less useful.
+
+Similarly, Agglomerative Clustering showed that an algorithm can be theoretically applicable to a problem while still being impractical at the scale of the available dataset.
+
+#### What P5 Demonstrated
+
+P5 demonstrated a different side of machine learning compared with the previous problems.
+
+In supervised learning, the target is already defined and the model attempts to learn a relationship between the features and that target.
+
+In unsupervised learning, there is no predefined concept of what is "good" or "bad". The objective is instead to discover patterns and structure within the data.
+
+This makes the process more difficult to evaluate, but also more exploratory.
+
+The clustering results revealed patterns in the player population that were not explicitly defined beforehand. The distinction between more progressed and active players and less progressed or active players emerged from the combination of multiple features rather than from a manually assigned label.
+
+The experiment also reinforced that **algorithm choice must consider both the structure and scale of the dataset**.
+
+K-Means produced a useful result, DBSCAN did not fit the dataset particularly well, and Agglomerative Clustering was computationally impractical on the complete population.
+
+#### Key Takeaways
+
+- P5 is the project's **unsupervised learning problem**.
+- The objective is to discover different player profiles based on their characteristics.
+- The dataset contains approximately **836,830 players and 30 clustering features**.
+- Features were standardized using `StandardScaler` because the algorithms rely on distances and the original variables operate on very different scales.
+- K-Means was evaluated for **K = 2–10** using a 50,000-player sample for Silhouette Score calculation.
+- **K = 2** achieved the best Silhouette Score of approximately **0.3926**.
+- The two clusters were relatively balanced and can be broadly interpreted as more progressed/active and less progressed/active player profiles.
+- DBSCAN produced **160 clusters**, but approximately **91.98% of players were classified as noise**, making it an unsuccessful approach for this dataset.
+- Agglomerative Clustering was not feasible on the complete dataset because of its extreme memory requirements.
+- PCA provided a useful visual representation of the clustering structure and highlighted the differences between K-Means and DBSCAN.
+- Unsupervised learning is more exploratory because there are no predefined labels telling the model what constitutes a good or bad group.
+- The experiment showed that discovering patterns can be more ambiguous than supervised prediction, but also more interesting because meaningful structures can emerge directly from the data.
+
+## 📈 Results & Findings
+
+> **Note:** This section will be completed once all experiments and results have been fully reviewed and the reported metrics are consistent across the project.
+>
+> The final version will include a consolidated comparison of the five machine learning problems, their best-performing models, key findings and the main lessons learned from the experiments.
+
+## 🔬 Machine Learning Engineering
+
+Although the project is primarily focused on machine learning experimentation, it also introduces several machine learning engineering practices to make the experiments easier to reproduce, compare and analyze.
+
+The engineering layer is intentionally lightweight. It is not designed as a production MLOps system, but as a practical and reproducible experimentation workflow.
+
+### Experiment Tracking with MLflow
+
+**MLflow** has been part of the project from the beginning and became one of the most useful components of the entire workflow.
+
+Instead of treating each training run as an isolated experiment, MLflow provides a centralized way to record what was done and compare the results afterwards.
+
+The experiments track:
+
+- Parameters
+- Metrics
+- Trained models
+- Artifacts
+- Dataset context
+- Target information
+- Dataset split configuration
+
+This makes it possible to inspect an experiment without having to remember exactly which configuration was used during training.
+
+The local MLflow setup uses **SQLite as the backend store** and local artifact storage:
+
+```text
+MLflow Server
+      │
+      ├── SQLite backend
+      │       └── mlflow.db
+      │
+      └── Artifact storage
+              └── mlflow/mlruns/
+```
+
+MLflow runs locally through:
+
+```text
+127.0.0.1:5000
+```
+
+### Dataset Context
+
+One particularly useful part of the tracking system was recording the **dataset context** for every experiment.
+
+Although all five problems originate from the same raw Clash of Clans data, they do not use the same final dataset.
+
+Each problem has its own:
+
+- Feature engineering
+- Selected features
+- Target
+- Dataset construction process
+
+Recording this information in MLflow makes it possible to understand exactly which dataset and target were used for each experiment.
+
+This becomes particularly important when comparing experiments across P1–P5, where datasets may originate from the same raw data but represent fundamentally different machine learning problems.
+
+The dataset split configuration is also recorded. This provides additional context when reviewing results and makes it possible to verify how the data was divided during training.
+
+### Reproducibility
+
+The experiments consistently use:
+
+```python
+random_state = 42
+```
+
+where applicable.
+
+The same general split configuration is therefore maintained across the experiments, while the split information itself is also logged in MLflow.
+
+This provides a consistent experimental setup and makes it easier to reproduce and compare results.
+
+The project is therefore designed so that the machine learning experiments can be executed again on another machine using the same code, datasets and configuration.
+
+### Reusable MLflow Tracking Layer
+
+The project uses a reusable layer around MLflow to avoid having to implement the same tracking logic independently for every problem.
+
+The tracking functionality covers operations such as:
+
+```text
+configure_tracking
+mlflow_run
+log_dataset_context
+log_split_config
+log_model_params
+log_metrics
+log_model_and_artifacts
+```
+
+This provides a common tracking workflow across the different supervised and unsupervised experiments.
+
+As new models were introduced, the tracking layer was also extended when necessary. For example, support for the **MLP** experiment was integrated into the existing MLflow workflow.
+
+Some issues with experiment metadata were also identified and corrected during development, such as ensuring that split configuration and dataset context were correctly stored in the early experiments.
+
+### Model Logging
+
+During the initial stages of the project, models were generally logged during each experiment run.
+
+As the project introduced **Optuna** for hyperparameter optimization, the workflow evolved.
+
+Instead of logging every intermediate model generated during the optimization process, the final selected model was logged after the optimization process had identified the best configuration.
+
+This reduced unnecessary model artifacts while keeping the final model associated with the corresponding experiment.
+
+### Model Loading and Feature Consistency
+
+One practical issue encountered during the project involved loading a trained XGBoost model for later analysis.
+
+One model had been trained using a different number of features than the feature set expected when the results were later generated. This resulted in a feature mismatch when attempting to load and use the model.
+
+The model was subsequently retrained with the correct feature set, resolving the issue.
+
+This highlighted an important practical aspect of machine learning engineering:
+
+> **A trained model is not independent from the feature schema used to train it.**
+
+The model, its expected features and the dataset used during inference need to remain aligned.
+
+MLflow model information and signatures were also used to help validate this consistency.
+
+### Hyperparameter Optimization with Optuna
+
+As the project evolved, **Optuna** was introduced to perform more systematic hyperparameter optimization.
+
+Before using Optuna, some experiments relied more heavily on manually changing parameters and observing how the models behaved.
+
+This was useful from a learning perspective because changing parameters manually made it easier to understand how different hyperparameters affected the models rather than treating the algorithm as a complete black box.
+
+Optuna introduced a more systematic search process.
+
+Instead of manually selecting every configuration, Optuna evaluates different configurations and progressively searches for better-performing regions of the hyperparameter space.
+
+For example, P4 used **50 trials** for both XGBoost and MLP to investigate whether increasing the optimization budget could produce meaningful improvements.
+
+Optuna therefore served two purposes in the project:
+
+1. **Practical optimization** — efficiently searching a large hyperparameter space.
+2. **Understanding optimization behaviour** — observing how different configurations affected model performance and trying to understand why certain configurations performed better.
+
+This distinction was important during the project. Hyperparameter optimization is most useful when the practitioner understands what the hyperparameters control and can interpret the behaviour observed during the search, rather than simply treating the optimization process as a black box.
+
+### Engineering Philosophy
+
+The engineering layer of the project is deliberately simple.
+
+There is currently no production deployment, cloud infrastructure, Docker/Kubernetes stack, CI/CD pipeline or model monitoring system.
+
+Instead, the focus is on establishing the foundations required for **reproducible machine learning experimentation**:
+
+```text
+Raw Data
+   ↓
+Problem-Specific Dataset
+   ↓
+Feature Engineering
+   ↓
+Training
+   ↓
+Hyperparameter Optimization
+   ↓
+Evaluation
+   ↓
+MLflow
+   ├── Parameters
+   ├── Metrics
+   ├── Models
+   ├── Artifacts
+   ├── Dataset Context
+   └── Split Configuration
+```
+
+For the scope of this project, this lightweight approach was sufficient to make the experiments traceable, comparable and reproducible.
+
+### What I Learned
+
+One of the main lessons from the project was how useful experiment tracking becomes once the number of experiments starts increasing.
+
+MLflow made it possible to quickly inspect metrics, visualize experiments, compare configurations and identify inconsistencies without manually keeping track of every training run.
+
+This became particularly valuable as the project grew from simple model experiments into a collection of five different machine learning problems.
+
+The project also showed that **machine learning engineering is not only about deploying models**. Even before deployment, keeping datasets, features, parameters, metrics and models organized has a significant impact on the quality and reproducibility of the experimentation process.
+
+Similarly, Optuna demonstrated the value of systematic hyperparameter optimization while reinforcing that automated optimization works best when combined with an understanding of the models and hyperparameters being optimized.
+

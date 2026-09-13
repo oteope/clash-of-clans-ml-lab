@@ -1105,6 +1105,229 @@ def _plot_global_metrics_comparison(
 
 
 # =============================================================================
+# FEATURE IMPORTANCE (XGBoost / Random Forest)
+# =============================================================================
+
+def _extract_feature_importance(
+    model: Any,
+    feature_names: List[str],
+) -> Optional[pd.Series]:
+    """
+    Returns feature_importances_ indexed by name, or None if the model
+    doesn't expose it (Ridge doesn't -- handled separately below).
+
+    Prefers the model's OWN feature_names_in_ over the shared
+    feature_names list built from X_test. Confirmed the hard way in P4:
+    if this specific model was trained on a different column subset than
+    the other models (exactly the kind of per-model inconsistency
+    already found between the six P2 training scripts --
+    capital_contributions present for some, absent for others),
+    feature_importances_ comes back shorter than the shared list, and
+    indexing it with the wrong names either raises ValueError or, worse,
+    would silently mislabel importances if the lengths matched by
+    coincidence.
+    """
+
+    importances = getattr(
+        model,
+        "feature_importances_",
+        None,
+    )
+
+    if importances is None:
+        return None
+
+    own_feature_names = getattr(
+        model,
+        "feature_names_in_",
+        None,
+    )
+
+    if own_feature_names is not None:
+
+        own_feature_names = list(own_feature_names)
+
+        if len(own_feature_names) == len(importances):
+
+            if set(own_feature_names) != set(feature_names):
+                print(
+                    f"    NOTE: this model's features differ from the "
+                    f"shared feature set ({len(own_feature_names)} vs "
+                    f"{len(feature_names)} columns) -- using this "
+                    f"model's own feature names for its importance "
+                    f"values."
+                )
+
+            return pd.Series(
+                importances,
+                index=own_feature_names,
+            )
+
+    if len(importances) == len(feature_names):
+        return pd.Series(
+            importances,
+            index=feature_names,
+        )
+
+    print(
+        f"    Skipping feature importance: feature_importances_ has "
+        f"{len(importances)} entries, which matches neither this "
+        f"model's own feature_names_in_ nor the {len(feature_names)} "
+        f"shared feature columns."
+    )
+
+    return None
+
+
+def _extract_ridge_importance(
+    model: Any,
+    X_reference: pd.DataFrame,
+    feature_names: List[str],
+) -> Optional[pd.Series]:
+    """
+    Ridge has no feature_importances_ -- its coefficients are the
+    equivalent, but a RAW coefficient conflates effect size with that
+    feature's natural scale (a coefficient on "trophies", which ranges in
+    the thousands, is not comparable to one on a 0-1 ratio just because
+    both are "a coefficient"). Multiplying each coefficient by that
+    feature's own standard deviation (computed from X_reference, i.e.
+    X_test -- an unbiased sample of the same distribution the model sees
+    at evaluation time) rescales every feature onto the same basis: "how
+    much does a real one-standard-deviation change in this feature move
+    the prediction". That is what actually makes it comparable to
+    RF/XGBoost's impurity-based importances at all, whether or not Ridge
+    itself was fit on pre-standardized features.
+
+    Returns a DataFrame with both the signed standardized coefficient
+    (which direction the feature pushes the prediction) and its absolute
+    value (the magnitude used for the cross-model importance comparison,
+    to match RF/XGBoost's non-negative importances).
+    """
+
+    coefficients = getattr(
+        model,
+        "coef_",
+        None,
+    )
+
+    if coefficients is None:
+        return None
+
+    coefficients = np.asarray(coefficients).ravel()
+
+    own_feature_names = getattr(model, "feature_names_in_", None)
+
+    if own_feature_names is not None and len(list(own_feature_names)) == len(coefficients):
+        names = list(own_feature_names)
+    elif len(coefficients) == len(feature_names):
+        names = feature_names
+    else:
+        print(
+            f"    Skipping Ridge coefficients: length {len(coefficients)} "
+            f"matches neither feature_names_in_ nor the shared feature "
+            f"columns."
+        )
+        return None
+
+    missing = [n for n in names if n not in X_reference.columns]
+    if missing:
+        print(
+            f"    Skipping Ridge coefficients: {missing} not present in "
+            f"the evaluation data, can't compute feature std for scaling."
+        )
+        return None
+
+    feature_stds = X_reference[names].std().replace(0, np.nan)
+
+    standardized = coefficients * feature_stds.values
+
+    return pd.DataFrame({
+        "coefficient_standardized": standardized,
+        "coefficient_standardized_abs": np.abs(standardized),
+    }, index=names)
+
+
+def _normalize_importance_for_comparison(
+    series: pd.Series,
+) -> pd.Series:
+    """
+    Scales an importance series to sum to 1 -- matching the convention
+    RF/XGBoost's own feature_importances_ already follow natively. Ridge's
+    standardized-coefficient magnitudes are on a completely different
+    numeric scale (they carry the target's own units), so without this
+    they would either dwarf or vanish next to RF/XGBoost's 0-1 values on
+    the same chart. This is a *relative-ranking* view for the plot only
+    -- "how does this feature rank against this model's own most
+    important features" -- not a claim that the underlying units are the
+    same, which they aren't and shouldn't be presented as.
+    """
+
+    total = series.sum()
+
+    if total == 0 or pd.isna(total):
+        return series * 0.0
+
+    return series / total
+
+
+def _plot_feature_importance_comparison(
+    importance_by_model: Dict[str, pd.Series],
+    output_path: Path,
+    top_n: int = 15,
+) -> None:
+    """
+    Grouped bar chart comparing normalized feature importance across
+    however many of {xgboost, random_forest, ridge} loaded successfully
+    for this variant. Each model's column is independently normalized to
+    sum to 1 (see _normalize_importance_for_comparison) before plotting
+    -- RF/XGBoost's impurity-based fraction and Ridge's standardized
+    |coefficient| are different units by construction; this puts them on
+    a common 0-1 relative-ranking scale for visual comparison only. The
+    saved CSV (built alongside this plot) keeps each model's native,
+    unnormalized values so nothing is lost to that rescaling.
+    """
+
+    if not importance_by_model:
+        return
+
+    normalized = {
+        model_key: _normalize_importance_for_comparison(series)
+        for model_key, series in importance_by_model.items()
+    }
+
+    combined = pd.DataFrame(normalized).fillna(0.0)
+
+    ranking = combined.mean(axis=1).sort_values(ascending=False)
+    top_features = ranking.head(top_n).index
+
+    plot_df = combined.loc[top_features]
+
+    plot_df.plot(
+        kind="barh",
+        figsize=(10, 8),
+    )
+
+    plt.gca().invert_yaxis()
+
+    plt.title(
+        f"Feature importance comparison (top {len(top_features)})\n"
+        f"(each model's own values normalized to sum to 1 -- relative "
+        f"ranking, not the same units)"
+    )
+
+    plt.xlabel("Normalized importance")
+
+    plt.tight_layout()
+
+    plt.savefig(
+        output_path,
+        dpi=150,
+    )
+
+    plt.close()
+
+
+# =============================================================================
 # EVALUATE ONE MODEL
 # =============================================================================
 
@@ -1391,6 +1614,9 @@ def main() -> None:
             {},
         )
 
+        feature_importance_records: Dict[str, pd.Series] = {}
+        ridge_signed_coefficients: Optional[pd.Series] = None
+
         for model_key, run_id in variant_runs.items():
 
             if run_id is None:
@@ -1440,6 +1666,40 @@ def main() -> None:
                 )
 
                 continue
+
+            # -----------------------------------------------------------------
+            # Feature importance / Ridge coefficients (lightweight -- only
+            # the small resulting Series is kept, not the model, so this
+            # doesn't affect the "one model in memory at a time" rule).
+            # -----------------------------------------------------------------
+
+            feature_names = list(X_test.columns)
+
+            if model_key == "ridge":
+
+                ridge_result = _extract_ridge_importance(
+                    model=model,
+                    X_reference=X_test,
+                    feature_names=feature_names,
+                )
+
+                if ridge_result is not None:
+                    feature_importance_records[model_key] = ridge_result[
+                        "coefficient_standardized_abs"
+                    ]
+                    ridge_signed_coefficients = ridge_result[
+                        "coefficient_standardized"
+                    ]
+
+            else:
+
+                importance = _extract_feature_importance(
+                    model=model,
+                    feature_names=feature_names,
+                )
+
+                if importance is not None:
+                    feature_importance_records[model_key] = importance
 
             model_display_name = MODEL_DISPLAY_NAMES.get(
                 model_key,
@@ -1549,6 +1809,44 @@ def main() -> None:
             y_pred = None
 
             gc.collect()
+
+        # ---------------------------------------------------------------------
+        # Feature importance comparison (XGBoost / Random Forest / Ridge),
+        # for whichever of the three loaded successfully in this variant.
+        # ---------------------------------------------------------------------
+
+        if feature_importance_records:
+
+            importance_table = pd.DataFrame(feature_importance_records)
+            importance_table.index.name = "feature"
+
+            rename_map = {
+                key: (
+                    "ridge_coefficient_abs_standardized"
+                    if key == "ridge"
+                    else f"{key}_importance"
+                )
+                for key in importance_table.columns
+            }
+            importance_table = importance_table.rename(columns=rename_map)
+
+            if ridge_signed_coefficients is not None:
+                importance_table["ridge_coefficient_signed"] = ridge_signed_coefficients
+
+            importance_table.to_csv(
+                variant_results_dir / "feature_importance_comparison.csv"
+            )
+
+            print(
+                f"\n  Feature importance comparison saved: "
+                f"{len(feature_importance_records)} model(s) "
+                f"({', '.join(feature_importance_records.keys())})"
+            )
+
+            _plot_feature_importance_comparison(
+                feature_importance_records,
+                variant_results_dir / "08_feature_importance_comparison.png",
+            )
 
         # ---------------------------------------------------------------------
         # Free test data
