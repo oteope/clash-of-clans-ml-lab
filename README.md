@@ -724,6 +724,8 @@ For comparison, the Random Forest v2 model achieved:
 | RMSE | 3.4162 |
 | R² | 0.9077 |
 
+(falta ridge con trophies avisar a alvaro al leer esto)
+
 The difference between the two models was relatively small, but XGBoost achieved the strongest overall results.
 
 #### Results — Without Trophies
@@ -1766,3 +1768,107 @@ The project also showed that **machine learning engineering is not only about de
 
 Similarly, Optuna demonstrated the value of systematic hyperparameter optimization while reinforcing that automated optimization works best when combined with an understanding of the models and hyperparameters being optimized.
 
+## ⚙️ Installation
+
+### Requirements
+
+The project requires **Python 3.10+** and uses a virtual environment to isolate the project dependencies.
+
+Clone the repository and create a virtual environment:
+
+```powershell
+git clone <https://github.com/oteope/clash-of-clans-ml-lab.git
+cd clash-of-clans-ml-lab>
+cd clash-of-clans-ml-lab
+
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+Install the project dependencies:
+
+```powershell
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+The main dependencies include:
+
+- **MLflow** — experiment tracking and model management
+- **pandas / NumPy** — data processing
+- **scikit-learn** — machine learning algorithms and evaluation
+- **XGBoost** — gradient boosting models
+- **Optuna** — hyperparameter optimization
+- **PyArrow** — Parquet dataset handling
+- **Matplotlib / Seaborn** — visualization and EDA
+- **aiohttp** — asynchronous API requests
+- **python-dotenv** — environment variable management
+
+### Clash of Clans API
+
+The data collection pipeline requires access to the **Clash of Clans Developer API**.
+
+The crawler uses an API key and the expected IP address configured as environment variables.
+
+Create a `.env` file in the project root:
+
+```env
+CLASH_API_KEY=your_api_key
+CLASH_API_IP=your_expected_ip
+```
+
+These credentials are required only for running the data collection pipeline. They should **never be committed to the repository**.
+
+### Datasets
+
+The final `.parquet` datasets are not included in the repository.
+
+They are excluded through `.gitignore` because of their size. Therefore, a fresh clone does not contain the processed datasets required by the ML pipelines.
+
+To reproduce the datasets from scratch, the data pipeline must be executed using a valid Clash of Clans API configuration.
+
+The general process is:
+
+```text
+Clash of Clans API
+        ↓
+Raw JSON Data
+        ↓
+Dataset Construction
+        ↓
+Feature Engineering
+        ↓
+Parquet Datasets
+```
+
+The raw data and generated datasets are stored locally under the project's `data/` directory.
+
+### MLflow
+
+The project uses a **local MLflow Tracking Server** with SQLite as the backend store.
+
+After installing the dependencies, start the MLflow server:
+
+```powershell
+mlflow server `
+  --backend-store-uri sqlite:///mlflow/mlflow.db `
+  --default-artifact-root ./mlflow/mlruns `
+  --host 127.0.0.1 `
+  --port 5000
+```
+
+The tracking server will be available at:
+
+```text
+http://127.0.0.1:5000
+```
+
+Configure the tracking URI in the terminal running the ML pipeline:
+
+```powershell
+$env:MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
+```
+
+Alternatively, the project can use its local SQLite configuration through the tracking utilities when no external tracking URI is provided.
+
+For a more detailed explanation of the MLflow setup, see the **Machine Learning Engineering** section.

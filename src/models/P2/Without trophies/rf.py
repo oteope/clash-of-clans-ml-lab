@@ -19,18 +19,24 @@ DATASET_PATH = "data/datasets/clan_rank_regression_without_trophies.parquet"
 data = pd.read_parquet(DATASET_PATH)
 
 #Defining target and features
-X = data.drop(columns=[
-    "clan_rank",
-    "player_tag",
-    "clan_tag",
-    "name",
-    "league_name",
-    "league_tier_name",
-    "war_frequency",
-    "war_league",
-    "capital_league",
-    "type",
-])
+X = data.drop(
+    columns=[
+        "clan_rank",
+        "player_tag",
+        "clan_tag",
+        "name",
+        "league_name",
+        "league_tier_name",
+        "war_frequency",
+        "war_league",
+        "capital_league",
+        "type",
+        "capital_contributions",
+        "clan_mean_capital_contributions",
+    ],
+    errors="ignore",
+)
+
 y = data["clan_rank"]
 
 #Preparing the train and test dataset
