@@ -57,8 +57,8 @@ MODEL_RUN_IDS = {
 
     "without_trophies": {
         "xgboost": "bcb7d9873163449697ca75b2c1cbbba5",
-        "random_forest": "8eef95c1839443e2840c07737d2e2f4c",
-        "ridge": "575905e3512f4729acfb2b654e816de5",
+        "random_forest": "7c4018cff56846bd8cd591d6624aaed9",
+        "ridge": "407b15aa60a74dd0bdf879a55f012d01",
     },
 }
 
