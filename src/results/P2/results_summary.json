@@ -13,8 +13,8 @@
     },
     "without_trophies": {
       "xgboost": "bcb7d9873163449697ca75b2c1cbbba5",
-      "random_forest": "8eef95c1839443e2840c07737d2e2f4c",
-      "ridge": "575905e3512f4729acfb2b654e816de5"
+      "random_forest": "7c4018cff56846bd8cd591d6624aaed9",
+      "ridge": "407b15aa60a74dd0bdf879a55f012d01"
     }
   },
   "results": [
@@ -43,12 +43,28 @@
       "r2": 0.880520224571228
     },
     {
+      "variant": "without_trophies",
+      "model": "random_forest",
+      "mae": 2.5839685705505384,
+      "mse": 15.787012275213684,
+      "rmse": 3.97328733861694,
+      "r2": 0.875108984688026
+    },
+    {
       "variant": "with_trophies",
       "model": "ridge",
       "mae": 4.499927383239596,
       "mse": 34.873718677685396,
       "rmse": 5.9053974191146015,
       "r2": 0.7241140972444498
+    },
+    {
+      "variant": "without_trophies",
+      "model": "ridge",
+      "mae": 4.631580974305154,
+      "mse": 37.61655346237344,
+      "rmse": 6.133233524200219,
+      "r2": 0.7024155380034134
     }
   ]
 }
