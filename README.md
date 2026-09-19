@@ -1872,3 +1872,113 @@ $env:MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
 Alternatively, the project can use its local SQLite configuration through the tracking utilities when no external tracking URI is provided.
 
 For a more detailed explanation of the MLflow setup, see the **Machine Learning Engineering** section.
+
+## 🚀 Usage
+
+The project is executed primarily through the command line.
+
+The general workflow is:
+
+```text
+Data Extraction
+      ↓
+Feature Engineering & Dataset Construction
+      ↓
+Model Training / Clustering
+      ↓
+Hyperparameter Optimization
+      ↓
+Evaluation
+      ↓
+MLflow Results
+```
+
+### 1. Extract Raw Data
+
+After configuring the Clash of Clans API credentials, run the main extraction pipeline:
+
+```powershell
+python src/extraction/main_extraction.py
+```
+
+The extracted raw data is stored locally under the `data/raw/` directory.
+
+### 2. Build the Dataset
+
+Each machine learning problem has its own feature engineering and dataset construction pipeline.
+
+The corresponding scripts are located under:
+
+```text
+src/features/
+├── problem1/
+├── problem2/
+├── problem3/
+├── problem4/
+└── problem5/
+```
+
+After extracting the raw data, run the dataset builder corresponding to the problem you want to work with.
+
+For example:
+
+```powershell
+python src/features/problem1/<build_problem1_name>_dataset.py
+```
+
+The same process applies to the other problems by using their corresponding `problem2`, `problem3`, `problem4` or `problem5` feature pipeline.
+
+Each pipeline performs the feature engineering required for its specific machine learning problem and generates the corresponding Parquet dataset.
+
+### 3. Start MLflow
+
+Before running the machine learning experiments, start the local MLflow tracking server:
+
+```powershell
+mlflow server `
+  --backend-store-uri sqlite:///mlflow/mlflow.db `
+  --default-artifact-root ./mlflow/mlruns `
+  --host 127.0.0.1 `
+  --port 5000
+```
+
+Keep the MLflow server running while executing experiments.
+
+The MLflow UI will be available at:
+
+```text
+http://127.0.0.1:5000
+```
+
+### 4. Run Machine Learning Experiments
+
+The machine learning experiments are organized by problem under:
+
+```text
+src/models/
+├── P1/
+├── P2/
+├── P3/
+├── P4/
+└── P5/
+```
+
+Each problem contains its own training, optimization and evaluation scripts.
+
+Depending on the experiment, model parameters can either be configured manually before execution or optimized automatically using **Optuna**.
+
+Run the corresponding experiment from the terminal:
+
+```powershell
+python src/models/P1/<experiment_script>.py
+```
+
+The same structure applies to `P2`, `P3`, `P4` and `P5`.
+
+Experiments that use Optuna perform the configured hyperparameter search automatically before logging the selected final model and results to MLflow.
+
+### 5. Analyze Results
+
+After running the experiments, the corresponding results scripts can be used to analyze the trained models and generate metrics, visualizations and comparisons.
+
+Each problem has its own results workflow. **P5 is an exception:** executing the P5 pipeline also produces problem-specific results, but the project additionally includes a **global results analysis** that consolidates the main results
