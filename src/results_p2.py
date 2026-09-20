@@ -88,6 +88,11 @@ TARGET_COLUMN = "clan_rank"
 DEFAULT_TEST_SIZE = 0.2
 DEFAULT_RANDOM_STATE = 42
 
+# How many features the two GLOBAL feature importance charts show
+# (09_feature_importance_global_comparison.png and
+# 10_feature_importance_global_heatmap.png).
+GLOBAL_IMPORTANCE_TOP_N = 15
+
 
 # =============================================================================
 # MODEL DISPLAY NAMES
@@ -1328,6 +1333,436 @@ def _plot_feature_importance_comparison(
 
 
 # =============================================================================
+# GLOBAL FEATURE IMPORTANCE COMPARISON (both variants, all models)
+# =============================================================================
+#
+# The per-variant comparison above (08_feature_importance_comparison.png)
+# only puts the models of ONE variant side by side. The functions below
+# put every model that loaded successfully -- with_trophies AND
+# without_trophies -- into a single table and two charts, so the effect
+# of removing the trophy features can be read model by model (the
+# with/without pair of the same model sits together) next to the
+# differences between the models themselves.
+#
+# Same convention as the per-variant comparison: every (variant, model)
+# column is normalized to sum to 1 over that model's OWN feature set, so
+# columns read as "share of this model's total importance", not as the
+# same unit (Ridge's standardized coefficients and the trees' impurity
+# importances never are). One consequence to keep in mind when reading
+# with vs without: removing the trophy features hands their share to the
+# remaining features, so a feature gaining share in without_trophies is
+# expected -- what the comparison shows is WHICH features absorb it.
+#
+# A feature that is not in a model's feature set at all (e.g. the trophy
+# columns in a without_trophies model) stays NaN in the table -- NOT 0 --
+# so "this model never saw the feature" remains distinguishable from
+# "this model saw it and it carries no importance". The bar chart draws
+# it as an empty bar; the heatmap draws it as a grey "n/a" cell.
+# =============================================================================
+
+def _build_global_importance_table(
+    all_feature_importance: Dict[str, Dict[str, pd.Series]],
+) -> pd.DataFrame:
+    """
+    Builds ONE table with the normalized importance of every model that
+    loaded successfully, in both dataset variants.
+
+    Index: feature name (union of every model's own feature set).
+    Columns: MultiIndex (variant, model_key), grouped by model first and
+    variant second -- so with_trophies / without_trophies of the SAME
+    model sit next to each other, which is what makes the effect of
+    removing the trophy features readable at a glance.
+
+    NaN means "this feature is not in that model's feature set". It is
+    deliberately NOT filled with 0 here.
+    """
+
+    column_keys: List[Tuple[str, str]] = []
+    column_series: List[pd.Series] = []
+
+    for model_key in MODEL_DISPLAY_NAMES:
+
+        for variant_name in MODEL_RUN_IDS:
+
+            series = all_feature_importance.get(
+                variant_name,
+                {},
+            ).get(model_key)
+
+            if series is None:
+                continue
+
+            # A NaN INSIDE a model's own series means "in the feature set
+            # but no measurable importance" (e.g. a zero-variance feature
+            # has an undefined standardized Ridge coefficient), so it
+            # counts as 0. Features the model never had at all only turn
+            # into NaN when the columns are aligned below.
+            series = series.astype(float).fillna(0.0)
+
+            column_keys.append(
+                (variant_name, model_key)
+            )
+
+            column_series.append(
+                _normalize_importance_for_comparison(series)
+            )
+
+    if not column_series:
+        return pd.DataFrame()
+
+    table = pd.concat(
+        column_series,
+        axis=1,
+    )
+
+    table.columns = pd.MultiIndex.from_tuples(
+        column_keys,
+        names=["variant", "model"],
+    )
+
+    table.index.name = "feature"
+
+    return table
+
+
+def _rank_features_by_mean_importance(
+    table: pd.DataFrame,
+) -> pd.Series:
+    """
+    Mean normalized importance across every (variant, model) column,
+    treating "feature not in this model" as 0, highest first. Used for
+    the CSV order and to pick the top features of both charts, so the
+    CSV and the two charts always agree on which features come first.
+    """
+
+    return (
+        table
+        .fillna(0.0)
+        .mean(axis=1)
+        .sort_values(ascending=False)
+    )
+
+
+def _plot_global_importance_bars(
+    table: pd.DataFrame,
+    output_path: Path,
+    top_n: int = 15,
+) -> None:
+    """
+    Grouped horizontal bars: one group per feature (top_n by mean
+    importance), one bar per (variant, model) column. Colour = model and
+    hatched = without_trophies, so the two bars of the same colour inside
+    each group are exactly "this model with vs without trophies". A
+    feature that is not in a model's feature set is drawn as 0.
+    """
+
+    ranking = _rank_features_by_mean_importance(table)
+
+    top_features = list(
+        ranking.head(top_n).index
+    )
+
+    plot_df = table.loc[top_features].fillna(0.0)
+
+    n_series = plot_df.shape[1]
+
+    bar_height = 0.8 / n_series
+
+    positions = np.arange(
+        len(top_features)
+    )
+
+    model_keys = list(MODEL_DISPLAY_NAMES.keys())
+    variant_names = list(MODEL_RUN_IDS.keys())
+
+    # No hatch = first variant (with_trophies); hatched = the others.
+    hatch_patterns = ["", "//", "..", "xx"]
+
+    fig, ax = plt.subplots(
+        figsize=(
+            13,
+            max(8.0, 0.9 * len(top_features)),
+        )
+    )
+
+    for column_index, (variant_name, model_key) in enumerate(
+        plot_df.columns
+    ):
+
+        offset = (
+            column_index
+            - (n_series - 1) / 2.0
+        ) * bar_height
+
+        ax.barh(
+            positions + offset,
+            plot_df[(variant_name, model_key)].to_numpy(),
+            height=bar_height,
+            color=f"C{model_keys.index(model_key) % 10}",
+            hatch=hatch_patterns[
+                variant_names.index(variant_name)
+                % len(hatch_patterns)
+            ],
+            edgecolor="black",
+            linewidth=0.5,
+            label=(
+                f"{variant_name} - "
+                f"{MODEL_DISPLAY_NAMES.get(model_key, model_key)}"
+            ),
+        )
+
+    ax.set_yticks(positions)
+    ax.set_yticklabels(top_features)
+    ax.invert_yaxis()
+
+    ax.set_xlabel("Normalized importance")
+
+    ax.set_title(
+        f"Global feature importance comparison "
+        f"(top {len(top_features)})\n"
+        f"(each model normalized to sum to 1 over its own features "
+        f"-- relative ranking, not the same units)"
+    )
+
+    ax.legend(loc="lower right")
+
+    fig.tight_layout()
+
+    fig.savefig(
+        output_path,
+        dpi=150,
+    )
+
+    plt.close(fig)
+
+
+def _plot_global_importance_heatmap(
+    table: pd.DataFrame,
+    output_path: Path,
+    top_n: int = 15,
+) -> None:
+    """
+    Heatmap of the same top_n features x every (variant, model) column,
+    with the exact normalized value written in each cell. A grey "n/a"
+    cell means the feature is not part of that model's feature set (the
+    trophy columns in without_trophies), as opposed to a pale cell,
+    which means it IS in the model and simply carries little importance.
+    """
+
+    ranking = _rank_features_by_mean_importance(table)
+
+    top_features = list(
+        ranking.head(top_n).index
+    )
+
+    heat = table.loc[top_features]
+
+    values = heat.to_numpy(dtype=float)
+
+    finite_values = values[np.isfinite(values)]
+
+    vmax = (
+        float(finite_values.max())
+        if finite_values.size > 0
+        else 1.0
+    )
+
+    if vmax <= 0.0:
+        vmax = 1.0
+
+    cmap = plt.get_cmap("Blues").copy()
+    cmap.set_bad(color="#d9d9d9")
+
+    n_rows, n_cols = values.shape
+
+    fig, ax = plt.subplots(
+        figsize=(
+            max(9.0, 1.6 * n_cols + 5.0),
+            max(6.0, 0.5 * n_rows + 2.5),
+        )
+    )
+
+    image = ax.imshow(
+        np.ma.masked_invalid(values),
+        aspect="auto",
+        cmap=cmap,
+        vmin=0.0,
+        vmax=vmax,
+    )
+
+    ax.set_xticks(np.arange(n_cols))
+
+    ax.set_xticklabels(
+        [
+            f"{MODEL_DISPLAY_NAMES.get(model_key, model_key)}\n{variant_name}"
+            for variant_name, model_key in heat.columns
+        ]
+    )
+
+    ax.set_yticks(np.arange(n_rows))
+    ax.set_yticklabels(top_features)
+
+    for row in range(n_rows):
+
+        for col in range(n_cols):
+
+            value = values[row, col]
+
+            if np.isnan(value):
+
+                ax.text(
+                    col,
+                    row,
+                    "n/a",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color="#666666",
+                )
+
+            else:
+
+                ax.text(
+                    col,
+                    row,
+                    f"{value:.3f}",
+                    ha="center",
+                    va="center",
+                    fontsize=8,
+                    color=(
+                        "white"
+                        if value > 0.6 * vmax
+                        else "black"
+                    ),
+                )
+
+    # A dark line wherever the model changes, so each model's
+    # with_trophies / without_trophies pair reads as one block.
+    column_models = [
+        model_key
+        for _, model_key in heat.columns
+    ]
+
+    for col in range(1, n_cols):
+
+        if column_models[col] != column_models[col - 1]:
+
+            ax.axvline(
+                col - 0.5,
+                color="black",
+                linewidth=1.5,
+            )
+
+    fig.colorbar(
+        image,
+        ax=ax,
+        label="Normalized importance",
+    )
+
+    ax.set_title(
+        f"Global feature importance heatmap "
+        f"(top {len(top_features)})\n"
+        f"(each model normalized to sum to 1 over its own features; "
+        f"grey n/a = feature not used by that model)",
+        fontsize=11,
+    )
+
+    fig.tight_layout()
+
+    fig.savefig(
+        output_path,
+        dpi=150,
+    )
+
+    plt.close(fig)
+
+
+def _save_global_feature_importance_comparison(
+    all_feature_importance: Dict[str, Dict[str, pd.Series]],
+    results_dir: Path,
+    top_n: int = 15,
+) -> None:
+    """
+    Builds the global table from the per-variant importance collected in
+    main() and writes, all under results_dir (next to the other global
+    comparison files):
+
+      - feature_importance_global_comparison.csv
+      - 09_feature_importance_global_comparison.png  (grouped bars)
+      - 10_feature_importance_global_heatmap.png     (heatmap)
+
+    The CSV keeps "feature not in that model's feature set" as an empty
+    cell and adds mean_importance (the ranking behind the CSV order and
+    the top-N features of both charts). Each model's NATIVE, unnormalized
+    values stay in the per-variant feature_importance_comparison.csv.
+    """
+
+    table = _build_global_importance_table(
+        all_feature_importance
+    )
+
+    if table.empty:
+
+        print(
+            "  No feature importance available for any model; "
+            "skipping the global comparison."
+        )
+
+        return
+
+    results_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    csv_df = table.copy()
+
+    csv_df.columns = [
+        f"{variant_name}__{model_key}"
+        for variant_name, model_key in table.columns
+    ]
+
+    csv_df["mean_importance"] = _rank_features_by_mean_importance(
+        table
+    )
+
+    csv_df = csv_df.sort_values(
+        "mean_importance",
+        ascending=False,
+    )
+
+    csv_df.to_csv(
+        results_dir
+        / "feature_importance_global_comparison.csv"
+    )
+
+    _plot_global_importance_bars(
+        table,
+        results_dir
+        / "09_feature_importance_global_comparison.png",
+        top_n=top_n,
+    )
+
+    _plot_global_importance_heatmap(
+        table,
+        results_dir
+        / "10_feature_importance_global_heatmap.png",
+        top_n=top_n,
+    )
+
+    included = ", ".join(
+        f"{variant_name}/{model_key}"
+        for variant_name, model_key in table.columns
+    )
+
+    print(
+        f"  Global feature importance comparison saved: "
+        f"{table.shape[1]} model(s) [{included}], "
+        f"{table.shape[0]} feature(s) in total"
+    )
+
+
+# =============================================================================
 # EVALUATE ONE MODEL
 # =============================================================================
 
@@ -1498,6 +1933,11 @@ def main() -> None:
     }
 
     all_metrics = []
+
+    # Per-variant feature importance (variant -> model_key -> Series),
+    # kept so the global with/without comparison can be built once every
+    # variant has been evaluated.
+    all_feature_importance: Dict[str, Dict[str, pd.Series]] = {}
 
     # -------------------------------------------------------------------------
     # Evaluation
@@ -1817,6 +2257,10 @@ def main() -> None:
 
         if feature_importance_records:
 
+            all_feature_importance[variant_name] = dict(
+                feature_importance_records
+            )
+
             importance_table = pd.DataFrame(feature_importance_records)
             importance_table.index.name = "feature"
 
@@ -1968,6 +2412,35 @@ def main() -> None:
         RESULTS_DIR
         / "05_global_metrics_comparison.png",
     )
+
+    # -------------------------------------------------------------------------
+    # Global feature importance comparison (with_trophies + without_trophies)
+    # -------------------------------------------------------------------------
+
+    print(
+        "\nBuilding global feature importance comparison..."
+    )
+
+    try:
+
+        _save_global_feature_importance_comparison(
+            all_feature_importance=all_feature_importance,
+            results_dir=RESULTS_DIR,
+            top_n=GLOBAL_IMPORTANCE_TOP_N,
+        )
+
+    except Exception as exc:
+
+        # Extra output only: whatever happens here, the metrics tables,
+        # the per-model plots and results_summary.json are not affected.
+        print(
+            f"\nWARNING: Could not build the global feature importance "
+            f"comparison: {type(exc).__name__}: {exc}"
+        )
+
+        print(
+            traceback.format_exc()
+        )
 
     # -------------------------------------------------------------------------
     # Summary JSON
