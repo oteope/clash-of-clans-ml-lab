@@ -1,0 +1,4 @@
+# Forzar que el código Python, notebooks y documentación usen siempre LF
+*.py text eol=lf
+*.ipynb text eol=lf
+*.md text eol=lf

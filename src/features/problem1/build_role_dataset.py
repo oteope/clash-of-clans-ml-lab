@@ -15,7 +15,7 @@ DATASETS_DIR = Path("data/datasets")
 
 
 def load_small_tables() -> Dict[str, pd.DataFrame]:
-    """Carga las tablas compactas que caben en memoria."""
+    """Load the compact tables that fit in memory."""
     return {
         "players": pd.read_parquet(PROCESSED_DIR / "players.parquet"),
         "clans": pd.read_parquet(PROCESSED_DIR / "clans.parquet"),
@@ -25,7 +25,7 @@ def load_small_tables() -> Dict[str, pd.DataFrame]:
 
 def select_clan_context_features(clans_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Selecciona únicamente características estructurales razonables del clan.
+    Select only reasonable clan structural features.
     """
     desired_cols = [
         "clan_tag",
@@ -40,7 +40,7 @@ def select_clan_context_features(clans_df: pd.DataFrame) -> pd.DataFrame:
         "type",
         "is_family_friendly",
     ]
-    # Mantener solo las columnas que existen
+    # Keep only existing columns
     cols = [c for c in desired_cols if c in clans_df.columns]
     return clans_df[cols].copy()
 
@@ -55,9 +55,9 @@ def build_all_features(
     achievements_df: pd.DataFrame,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Construye player_features y player_clan_features.
+    Build player_features and player_clan_features.
 
-    Esta versión recibe DataFrames completos y se mantiene para tests.
+    This version accepts complete DataFrames and is retained for tests.
     """
     pf = build_player_features(
         players_df, troops_df, heroes_df, spells_df, equipment_df, achievements_df
@@ -73,21 +73,21 @@ def assemble_role_dataset(
     clans_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Une player_features, player_clan_features y contexto de clan,
-    y añade el target `role` preservando la relación player-clan.
+    Join player_features, player_clan_features, and clan context,
+    and add the `role` target while preserving the player-clan relationship.
 
-    El dataset resultante tiene una fila por (clan_tag, player_tag).
+    The resulting dataset has one row per (clan_tag, player_tag).
     """
-    # Contexto de clan
+    # Clan context
     clan_ctx = select_clan_context_features(clans_df)
 
-    # Unión de player_clan_features con contexto de clan
+    # Join player_clan_features with clan context
     merged = pcf.merge(clan_ctx, on="clan_tag", how="left")
 
-    # Añadir todas las player_features
+    # Add all player_features
     merged = merged.merge(pf, on="player_tag", how="left", suffixes=("", "_player"))
 
-    # Target role desde clan_members (sin duplicados por seguridad)
+    # Role target from clan_members (without duplicates for safety)
     role_df = clan_members_df[["clan_tag", "player_tag", "role"]].drop_duplicates()
     final = merged.merge(role_df, on=["clan_tag", "player_tag"], how="left")
 
@@ -95,29 +95,29 @@ def assemble_role_dataset(
 
 
 def main() -> None:
-    """Pipeline completo para generación de features del Problema 1."""
+    """Complete pipeline for Problem 1 feature generation."""
     FEATURES_DIR.mkdir(parents=True, exist_ok=True)
     DATASETS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Cargar solo tablas compactas
+    # Load only compact tables
     small_tables = load_small_tables()
     players_df = small_tables["players"]
     clans_df = small_tables["clans"]
     clan_members_df = small_tables["clan_members"]
 
-    # Calcular player features mediante procesamiento por batches
+    # Calculate player features through batch processing
     pf = build_player_features_from_files(
         PROCESSED_DIR, batch_size=100_000
     )
 
-    # Calcular player-clan features usando clan_members y player_features
+    # Calculate player-clan features using clan_members and player_features
     pcf = compute_clan_relative_features(clan_members_df, pf)
 
-    # Guardar features intermedias
+    # Save intermediate features
     pf.to_parquet(FEATURES_DIR / "player_features.parquet", index=False)
     pcf.to_parquet(FEATURES_DIR / "player_clan_features.parquet", index=False)
 
-    # Dataset final
+    # Final dataset
     role_dataset = assemble_role_dataset(
         pf=pf,
         pcf=pcf,

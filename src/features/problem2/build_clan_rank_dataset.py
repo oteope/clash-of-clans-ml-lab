@@ -10,7 +10,7 @@ PROCESSED_DIR = Path("data/processed")
 FEATURES_DIR = Path("data/features")
 DATASETS_DIR = Path("data/datasets")
 
-# Columnas que NO pueden utilizarse como features del Problema 2
+# Columns that CANNOT be used as features for Problem 2
 FORBIDDEN_FEATURES = {"clan_rank", "previous_clan_rank", "role"}
 
 
@@ -18,7 +18,7 @@ def load_inputs(
     processed_dir: Path = PROCESSED_DIR,
     features_dir: Path = FEATURES_DIR,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """Carga las tablas compactas necesarias y las player features ya calculadas."""
+    """Load the required compact tables and previously calculated player features."""
     clan_members = pd.read_parquet(processed_dir / "clan_members.parquet")
     clans = pd.read_parquet(processed_dir / "clans.parquet")
     player_features = pd.read_parquet(features_dir / "player_features.parquet")
@@ -26,7 +26,7 @@ def load_inputs(
 
 
 def select_clan_context_features(clans_df: pd.DataFrame) -> pd.DataFrame:
-    """Selecciona características estructurales razonables del clan."""
+    """Select reasonable clan structural features."""
     desired_cols = [
         "clan_tag",
         "clan_level",
@@ -49,10 +49,10 @@ def _compute_relative_features(
     relative_cols: List[str],
 ) -> pd.DataFrame:
     """
-    Calcula características relativas dentro del clan:
-      - diferencia respecto a la media
-      - ratio respecto a la media
-      - percentil dentro del clan
+    Calculate relative features within the clan:
+      - difference from the mean
+      - ratio to the mean
+      - percentile within the clan
     """
     result = pd.DataFrame(index=df.index)
     result["player_tag"] = df["player_tag"]
@@ -71,7 +71,7 @@ def _compute_relative_features(
             method="average", pct=True
         )
 
-    # Limpieza de NaN e Inf
+    # Clean NaN and Inf values
     result = result.replace([np.inf, -np.inf], np.nan)
     result = result.fillna(0)
     return result
@@ -82,8 +82,8 @@ def _merge_preserving_clan_values(
     player_features: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Une clan_members con player_features usando player_tag,
-    manteniendo los valores originales de clan_members cuando exista colisión.
+    Join clan_members with player_features using player_tag,
+    retaining the original clan_members values when a collision occurs.
     """
     merged = clan_members.merge(
         player_features,
@@ -104,8 +104,8 @@ def _merge_preserving_clan_values(
 
 def _is_variable_banned(feature_name: str, banned_vars: set) -> bool:
     """
-    Devuelve True si la columna debe excluirse.
-    Se excluye la columna exacta o cualquier derivada que empiece por `<var>_`.
+    Return True if the column should be excluded.
+    Exclude the exact column or any derivative that begins with `<var>_`.
     """
     if feature_name in banned_vars:
         return True
@@ -122,17 +122,17 @@ def build_clan_rank_features(
     include_trophies: bool = True,
 ) -> pd.DataFrame:
     """
-    Construye el dataset para el Problema 2: target = clan_rank.
+    Build the dataset for Problem 2: target = clan_rank.
 
-    Una fila por (clan_tag, player_tag).
-    Las relaciones sin player_features se excluyen mediante inner join.
-    Las features excluidas por leakage/proxy se eliminan antes de generar el dataset.
+    One row per (clan_tag, player_tag).
+    Relationships without player_features are excluded through an inner join.
+    Features excluded due to leakage/proxy are removed before generating the dataset.
 
-    Parámetro:
+    Parameter:
     ----------
     include_trophies : bool
-        Si es True, se conservan las features de trophies.
-        Si es False, se excluyen trophies y todas sus variables relacionadas:
+        If True, trophies features are retained.
+        If False, trophies and all related variables are excluded:
             - trophies
             - trophies_diff_from_clan_mean
             - trophies_ratio_to_clan_mean
@@ -142,7 +142,7 @@ def build_clan_rank_features(
             - clan_mean_trophies
             - required_trophies
     """
-    # 1) Auditoría de posibles proxies
+    # 1) Audit potential proxies
     analysis_df = audit_clan_rank_proxies(clan_members_df, player_features_df)
 
     banned_vars = set(FORBIDDEN_FEATURES)
@@ -150,11 +150,11 @@ def build_clan_rank_features(
         if row["classification"] in {"EXCLUDE", "TOO_DIRECT"}:
             banned_vars.add(row["variable"])
 
-    # 2) Ajuste específico para trophies según la variante solicitada
+    # 2) Specific trophies adjustment according to the requested variant
     if include_trophies:
         banned_vars.discard("trophies")
     else:
-        # Excluir todas las columnas relacionadas con trophies para 2B
+        # Exclude all trophies-related columns for 2B
         trophy_related_banned = {
             "trophies",
             "trophies_diff_from_clan_mean",
@@ -167,10 +167,10 @@ def build_clan_rank_features(
         }
         banned_vars.update(trophy_related_banned)
 
-    # 3) Join principal
+    # 3) Main join
     merged = _merge_preserving_clan_values(clan_members_df, player_features_df)
 
-    # 4) Características relativas al clan
+    # 4) Clan-relative features
     relative_cols = [
         "trophies",
         "exp_level",
@@ -184,18 +184,18 @@ def build_clan_rank_features(
     ]
     rel_features = _compute_relative_features(merged, relative_cols)
 
-    # 5) Contexto estructural del clan
+    # 5) Clan structural context
     clan_ctx = select_clan_context_features(clans_df)
     output = merged.merge(clan_ctx, on="clan_tag", how="left")
 
-    # 6) Añadir features relativas
+    # 6) Add relative features
     output = output.merge(
         rel_features,
         on=["player_tag", "clan_tag"],
         how="left",
     )
 
-    # 7) Seleccionar columnas finales aplicando política anti-leakage
+    # 7) Select final columns using the anti-leakage policy
     target_col = "clan_rank"
     id_cols = ["player_tag", "clan_tag"]
 
@@ -208,7 +208,7 @@ def build_clan_rank_features(
 
     final = output[id_cols + feature_cols + [target_col]].copy()
 
-    # 8) Verificaciones de seguridad
+    # 8) Safety checks
     assert target_col not in feature_cols, "clan_rank no debe ser feature"
     assert "previous_clan_rank" not in final.columns, "previous_clan_rank debe excluirse"
     assert "role" not in final.columns, "role no debe aparecer como feature"
@@ -223,9 +223,9 @@ def build_clan_rank_dataset(
     include_trophies: bool = True,
 ) -> pd.DataFrame:
     """
-    Función principal que carga datos, construye una variante del dataset y la guarda.
+    Main function that loads data, builds a dataset variant, and saves it.
 
-    La variante se decide mediante include_trophies:
+    The variant is determined by include_trophies:
       - True  -> data/datasets/clan_rank_regression_with_trophies.parquet
       - False -> data/datasets/clan_rank_regression_without_trophies.parquet
     """
@@ -261,7 +261,7 @@ def build_clan_rank_dataset_variants(
     datasets_dir: Path = DATASETS_DIR,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
-    Genera las dos variantes solicitadas:
+    Generate the two requested variants:
       1. clan_rank_regression_with_trophies.parquet
       2. clan_rank_regression_without_trophies.parquet
     """

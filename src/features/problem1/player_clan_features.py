@@ -7,13 +7,13 @@ def compute_clan_relative_features(
     player_features_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Calcula features relativas jugador-clan.
+    Compute player-clan relative features.
 
-    No utiliza clan_rank ni previous_clan_rank.
-    Retorna un DataFrame con una fila por relación (clan_tag, player_tag)
-    y columnas de diferencias/ratios/percentiles dentro del clan.
+    Does not use clan_rank or previous_clan_rank.
+    Return a DataFrame with one row per (clan_tag, player_tag) relationship
+    and columns for within-clan differences, ratios, and percentiles.
     """
-    # Columnas provenientes de clan_members
+    # Columns from clan_members
     member_base_cols = [
         "clan_tag",
         "player_tag",
@@ -26,17 +26,17 @@ def compute_clan_relative_features(
     ]
     base = clan_members_df[member_base_cols].copy()
 
-    # Columnas adicionales desde player_features
+    # Additional columns from player_features
     extra_cols = ["player_tag", "war_stars", "attack_wins", "defense_wins"]
     extra = player_features_df[extra_cols].copy()
 
     merged = base.merge(extra, on="player_tag", how="left")
 
-    # Rellenar con 0 columnas numéricas que no existían en player_features
+    # Fill with 0 numeric columns that did not exist in player_features
     for col in ["war_stars", "attack_wins", "defense_wins"]:
         merged[col] = merged[col].fillna(0)
 
-    # Features para las que calcularemos estadísticas relativas
+    # Features for which relative statistics will be calculated
     relative_cols = [
         "trophies",
         "exp_level",
@@ -49,14 +49,14 @@ def compute_clan_relative_features(
         "defense_wins",
     ]
 
-    # Medias por clan
+    # Means by clan
     clan_means = merged.groupby("clan_tag")[relative_cols].transform("mean")
     clan_means = clan_means.rename(columns=lambda c: f"clan_mean_{c}")
 
-    # Inicializar resultado con identificadores
+    # Initialize result with identifiers
     result = merged[["player_tag", "clan_tag"]].copy()
 
-    # Diferencias y ratios
+    # Differences and ratios
     for col in relative_cols:
         mean_col = f"clan_mean_{col}"
         result[f"{col}_diff_from_clan_mean"] = merged[col] - clan_means[mean_col]
@@ -64,7 +64,7 @@ def compute_clan_relative_features(
             merged[col] / clan_means[mean_col].replace(0, np.nan)
         )
 
-    # Percentiles dentro del clan para algunas features relevantes
+    # Within-clan percentiles for some relevant features
     percentile_cols = ["trophies", "exp_level", "war_stars"]
     for col in percentile_cols:
         merged[f"{col}_clan_pct"] = merged.groupby("clan_tag")[col].rank(
@@ -76,7 +76,7 @@ def compute_clan_relative_features(
     ]
     result = pd.concat([result, percentile_output], axis=1)
 
-    # Limpieza de NaN/Inf
+    # Clean NaN/Inf values
     result = result.replace([np.inf, -np.inf], np.nan)
     result = result.fillna(0)
 

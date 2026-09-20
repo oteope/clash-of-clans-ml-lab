@@ -1,1 +1,1 @@
-"""Feature engineering para el Problema 3: rendimiento histórico del clan."""
+"""Feature engineering for Problem 3: historical clan performance."""

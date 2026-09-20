@@ -22,7 +22,7 @@ from src.features.problem1.build_role_dataset import (
 
 
 def make_players_df():
-    """Crea un DataFrame de jugadores de ejemplo."""
+    """Create an example player DataFrame."""
     return pd.DataFrame(
         {
             "player_tag": ["#P1", "#P2", "#P3", "#P4"],
@@ -142,7 +142,7 @@ class TestPlayerFeatures(unittest.TestCase):
         self.assertIn("troop_count", agg.columns)
         self.assertIn("troop_mean_level", agg.columns)
         self.assertIn("troop_mean_completion_ratio", agg.columns)
-        # #P1 tiene 2 tropas, nivel medio (5+6)/2 = 5.5
+        # #P1 has 2 troops, with an average level of (5+6)/2 = 5.5
         self.assertAlmostEqual(agg.loc["#P1", "troop_count"], 2)
         self.assertAlmostEqual(agg.loc["#P1", "troop_mean_level"], 5.5)
 
@@ -182,12 +182,12 @@ class TestPlayerFeatures(unittest.TestCase):
         ]
         for col in expected_cols:
             self.assertIn(col, pf.columns)
-        # Los jugadores sin tropas/heroes deben tener 0
+        # Players without troops/heroes must have 0
         self.assertEqual(pf.loc[pf.player_tag == "#P4", "hero_count"].iloc[0], 0)
 
     def test_missing_progression_rows_filled_with_zero(self):
         players = make_players_df()
-        # Solo tropas para #P1, sin filas de heroes
+        # Troops only for #P1, with no hero rows
         troops = make_troops_df()
         heroes = pd.DataFrame(columns=["player_tag", "level", "max_level"])
         spells = make_spells_df()
@@ -197,7 +197,7 @@ class TestPlayerFeatures(unittest.TestCase):
         pf = build_player_features(
             players, troops, heroes, spells, equipment, achievements
         )
-        # #P3 no tiene heroes, debe ser 0
+        # #P3 has no heroes, so it must be 0
         self.assertEqual(pf.loc[pf.player_tag == "#P3", "hero_count"].iloc[0], 0)
         self.assertEqual(
             pf.loc[pf.player_tag == "#P3", "hero_mean_level"].iloc[0], 0
@@ -217,7 +217,7 @@ class TestPlayerClanFeatures(unittest.TestCase):
             make_achievements_df(),
         )
         pcf = compute_clan_relative_features(clan_members, pf)
-        # Verificar que existen columnas de diff, ratio y percentil
+        # Verify that diff, ratio, and percentile columns exist
         self.assertIn("trophies_diff_from_clan_mean", pcf.columns)
         self.assertIn("exp_level_ratio_to_clan_mean", pcf.columns)
         self.assertIn("trophies_clan_pct", pcf.columns)
@@ -236,13 +236,13 @@ class TestPlayerClanFeatures(unittest.TestCase):
         )
         pcf = compute_clan_relative_features(clan_members, pf)
 
-        # Para #C1: tropies = 2500,3000 -> media 2750
-        # jugador #P1 (2500) diff = -250
+        # For #C1: tropies = 2500,3000 -> mean 2750
+        # player #P1 (2500) diff = -250
         row_p1 = pcf[(pcf.clan_tag == "#C1") & (pcf.player_tag == "#P1")]
         self.assertAlmostEqual(
             row_p1.iloc[0]["trophies_diff_from_clan_mean"], -250.0
         )
-        # Percentil de #P1: 1 de 2 -> 0.5
+        # Percentile for #P1: 1 of 2 -> 0.5
         self.assertAlmostEqual(row_p1.iloc[0]["trophies_clan_pct"], 0.5)
 
 
@@ -263,13 +263,13 @@ class TestAssembleRoleDataset(unittest.TestCase):
         )
         final = assemble_role_dataset(pf, pcf, clan_members, clans)
 
-        # 1 fila por relación player-clan
+        # 1 row per player-clan relationship
         self.assertEqual(len(final), len(clan_members))
-        # sin pares duplicados
+        # No duplicate pairs
         self.assertEqual(
             final.duplicated(subset=["clan_tag", "player_tag"]).sum(), 0
         )
-        # roles preservados
+        # Preserved roles
         self.assertEqual(set(final["role"]), set(clan_members["role"]))
 
     def test_leakage_prevention_feature_columns(self):
@@ -295,7 +295,7 @@ class TestAssembleRoleDataset(unittest.TestCase):
     def test_clan_tag_not_overwritten(self):
         clan_members = make_clan_members_df()
         players = make_players_df()
-        # Forzar un clan_tag diferente en players para un jugador
+        # Force a different clan_tag in players for one player
         players.loc[players.player_tag == "#P1", "clan_tag"] = "#OTHER"
         clans = make_clans_df()
 
@@ -310,7 +310,7 @@ class TestAssembleRoleDataset(unittest.TestCase):
         )
         final = assemble_role_dataset(pf, pcf, clan_members, clans)
 
-        # El clan_tag del dataset debe venir de clan_members, no de players
+        # The dataset clan_tag must come from clan_members, not players
         row_p1 = final[final.player_tag == "#P1"].iloc[0]
         self.assertEqual(row_p1["clan_tag"], "#C1")
 
@@ -338,7 +338,7 @@ class TestBatchProcessing(unittest.TestCase):
         self.processed_dir = Path(self.temp_dir.name) / "processed"
         self.processed_dir.mkdir(parents=True, exist_ok=True)
 
-        # Guardar DataFrames de ejemplo en parquet
+        # Save example DataFrames to Parquet
         _write_parquet(make_players_df(), self.processed_dir / "players.parquet")
         _write_parquet(make_clans_df(), self.processed_dir / "clans.parquet")
         _write_parquet(make_clan_members_df(), self.processed_dir / "clan_members.parquet")
@@ -352,12 +352,12 @@ class TestBatchProcessing(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_batch_processing_matches_full_dataframe(self):
-        # Procesamiento por batches
+        # Batch processing
         pf_batch = build_player_features_from_files(
             self.processed_dir, batch_size=2
         )
 
-        # Procesamiento completo con DataFrames
+        # Complete processing with DataFrames
         players = make_players_df()
         troops = make_troops_df()
         heroes = make_heroes_df()
@@ -368,7 +368,7 @@ class TestBatchProcessing(unittest.TestCase):
             players, troops, heroes, spells, equipment, achievements
         )
 
-        # Ordenar y comparar columnas
+        # Sort and compare columns
         cols = sorted(pf_batch.columns)
         pf_batch_sorted = pf_batch[cols].sort_values("player_tag").reset_index(drop=True)
         pf_full_sorted = pf_full[cols].sort_values("player_tag").reset_index(drop=True)
@@ -383,7 +383,7 @@ class TestBatchProcessing(unittest.TestCase):
         )
 
     def test_batch_processing_empty_progression_tables(self):
-        # Crear archivos parquet vacíos para tablas de progresión
+        # Create empty Parquet files for progression tables
         for name in [
             "player_troops",
             "player_heroes",
@@ -396,13 +396,13 @@ class TestBatchProcessing(unittest.TestCase):
                 self.processed_dir / f"{name}.parquet",
                 empty_schema,
             ) as writer:
-                pass  # archivo vacío
+                pass  # empty file
 
         pf_batch = build_player_features_from_files(
             self.processed_dir, batch_size=2
         )
 
-        # Ningún jugador debe tener count/mean en tablas vacías
+        # No player should have count/mean values in empty tables
         for col in [
             "troop_count",
             "hero_count",
@@ -417,7 +417,7 @@ class TestBatchProcessing(unittest.TestCase):
             self.processed_dir, batch_size=3
         )
         self.assertTrue(pf_batch["player_tag"].is_unique)
-        # Debe incluir a todos los jugadores de players.parquet
+        # It must include all players from players.parquet
         expected_players = set(make_players_df()["player_tag"])
         self.assertEqual(set(pf_batch["player_tag"]), expected_players)
 

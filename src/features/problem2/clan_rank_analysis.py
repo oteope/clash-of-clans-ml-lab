@@ -4,11 +4,11 @@ import numpy as np
 import pandas as pd
 
 
-# Variables que jamás pueden usarse como features,
-# independientemente de los resultados del análisis.
+# Variables that can never be used as features,
+# regardless of the analysis results.
 ALWAYS_EXCLUDED = {"clan_rank", "previous_clan_rank", "role"}
 
-# Variables que queremos auditar como posibles predictores/proxies.
+# Variables to audit as potential predictors/proxies.
 CANDIDATE_VARIABLES = [
     "trophies",
     "town_hall_level",
@@ -25,30 +25,30 @@ CANDIDATE_VARIABLES = [
 
 def _ensure_player_tag_column(df: pd.DataFrame, df_name: str = "DataFrame") -> pd.DataFrame:
     """
-    Garantiza que el DataFrame tenga una columna ``player_tag``.
+    Ensure that the DataFrame has a ``player_tag`` column.
 
-    Si ``player_tag`` ya es columna, devuelve una copia.
-    Si está como índice, lo restaura como columna, soportando índices con
-    nombre o sin él.
+    If ``player_tag`` is already a column, return a copy.
+    If it is an index, restore it as a column, supporting named and unnamed
+    indexes.
     """
     if "player_tag" in df.columns:
         return df.copy()
 
     df_reset = df.reset_index()
 
-    # Si reset_index ya creó player_tag, lo usamos directamente.
+    # If reset_index already created player_tag, use it directly.
     if "player_tag" in df_reset.columns:
         return df_reset
 
-    # Si no existe player_tag y reset_index añadió exactamente una columna,
-    # la primera columna es el índice original y debe contener player_tag.
+    # If player_tag does not exist and reset_index added exactly one column,
+    # the first column is the original index and must contain player_tag.
     if len(df_reset.columns) == len(df.columns) + 1:
         first_col = df_reset.columns[0]
         df_reset = df_reset.rename(columns={first_col: "player_tag"})
         return df_reset
 
-    # Si no pudimos identificar player_tag, y el primer caso no se dio,
-    # reportamos un mensaje específico para facilitar el diagnóstico.
+    # If player_tag could not be identified and the first case did not occur,
+    # report a specific message to facilitate diagnosis.
     raise KeyError(
         f"{df_name}: no se pudo identificar la columna 'player_tag'"
     )
@@ -59,11 +59,11 @@ def _merge_for_analysis(
     player_features_df: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """
-    Prepara una tabla unida para auditar la relación con clan_rank.
+    Prepare a joined table to audit the relationship with clan_rank.
 
-    Si se proporcionan player_features, hace un inner join para añadir
-    columnas como war_stars, attack_wins y defense_wins. En caso de colisión,
-    conserva la columna original de clan_members.
+    If player_features are provided, perform an inner join to add columns
+    such as war_stars, attack_wins, and defense_wins. In the event of a
+    collision, retain the original clan_members column.
     """
     if player_features_df is None:
         return clan_members_df.copy()
@@ -71,7 +71,7 @@ def _merge_for_analysis(
     clan_members = _ensure_player_tag_column(clan_members_df, "clan_members_df")
     player_features = _ensure_player_tag_column(player_features_df, "player_features_df")
 
-    # Normalizar explícitamente player_tag como identificador string.
+    # Explicitly normalize player_tag as a string identifier.
     clan_members["player_tag"] = clan_members["player_tag"].astype(str)
     player_features["player_tag"] = player_features["player_tag"].astype(str)
 
@@ -82,7 +82,7 @@ def _merge_for_analysis(
         suffixes=("", "_player"),
     )
 
-    # Eliminar columnas duplicadas provenientes de player_features
+    # Remove duplicate columns from player_features
     duplicate_cols = [
         col
         for col in merged.columns
@@ -95,7 +95,7 @@ def _merge_for_analysis(
 
 
 def _per_clan_spearman(merged: pd.DataFrame, variable: str) -> pd.Series:
-    """Calcula la correlación de Spearman entre clan_rank y variable por clan."""
+    """Calculate the Spearman correlation between clan_rank and a variable by clan."""
 
     def safe_corr(group: pd.DataFrame) -> float:
         if group["clan_rank"].nunique() < 2:
@@ -112,9 +112,9 @@ def audit_clan_rank_proxies(
     player_features_df: Optional[pd.DataFrame] = None,
 ) -> pd.DataFrame:
     """
-    Audita la relación de clan_rank con variables candidatas.
+    Audit the relationship of clan_rank with candidate variables.
 
-    Devuelve un DataFrame con una fila por variable y columnas:
+    Return a DataFrame with one row per variable and columns:
     variable, median_spearman, p90_abs_spearman, pct_clans_abs_gt_90,
     classification, reason.
     """
@@ -188,7 +188,7 @@ def audit_clan_rank_proxies(
 
 
 def print_audit_report(analysis_df: pd.DataFrame) -> None:
-    """Imprime una tabla legible con el resultado de la auditoría."""
+    """Print a readable table with the audit result."""
     print("\n=== Auditoría de proxies de clan_rank ===")
     for _, row in analysis_df.iterrows():
         print(f"- {row['variable']:25s}: {row['classification']:11s} | {row['reason']}")
@@ -200,10 +200,10 @@ def main(
     player_features_df: Optional[pd.DataFrame] = None,
 ) -> None:
     """
-    Punto de entrada para ejecutar el módulo desde consola.
+    Entry point for running the module from the console.
 
-    Carga los datos si no se proporcionan, ejecuta la auditoría y
-    muestra un informe legible por consola.
+    Load data if it is not provided, run the audit, and display a readable
+    console report.
     """
     if clan_members_df is None:
         try:

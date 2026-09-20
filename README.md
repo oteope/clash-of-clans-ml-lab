@@ -551,47 +551,15 @@ Accuracy alone was not considered sufficient because it could hide poor performa
 
 #### Results
 
-The **Random Forest** achieved the best overall performance, reaching approximately **90% performance across the main classification metrics**.
+The final comparison produced the following results:
 
-More importantly, Random Forest was also particularly effective at taking advantage of the additional weight assigned to the `leader` class.
+| Model | Accuracy | F1 Weighted | F1 Macro | Admin F1 | CoLeader F1 | Leader F1 | Member F1 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| **Random Forest** | **0.5547** | **0.5459** | **0.4980** | **0.4452** | **0.5104** | 0.3762 | **0.6603** |
+| XGBoost | 0.5398 | 0.5345 | 0.4955 | 0.4389 | 0.4705 | **0.4185** | 0.6542 |
+| Logistic Regression | 0.4521 | 0.4624 | 0.4236 | 0.4177 | 0.4002 | 0.3271 | 0.5494 |
 
-The F1-score comparison shows that the Random Forest was able to maintain strong performance across the classes while handling the more difficult `leader` class better than the other approaches.
-
-![P1 model comparison](path/to/p1_model_comparison.png)
-
-The detailed per-class results are shown in the plots above.
-
-#### Analysis
-
-One of the most interesting observations from P1 was the effect of **class weighting**.
-
-The `leader` class is fundamentally different from the other roles because of its very low natural frequency. Increasing its training weight changed how the models treated this class, but the effect was not identical across algorithms.
-
-Random Forest appeared to make particularly effective use of this weighting strategy, producing a much more competitive F1-score for `leader` while maintaining strong performance on the remaining classes.
-
-This illustrates an important point about classification problems with imbalanced targets: **overall accuracy does not necessarily describe how well a model solves the actual problem**.
-
-For this reason, the per-class F1-score was more informative than accuracy alone.
-
-#### Computational Cost
-
-The experiments also highlighted a practical consideration of model selection.
-
-Some of the Random Forest training runs took approximately **40 minutes** to complete, making iterative experimentation considerably more expensive.
-
-Although this was not a limitation of the final model itself, it became a useful practical lesson about the trade-off between model performance, hyperparameter search and computational cost.
-
-#### Key Takeaways
-
-P1 provided the first complete classification problem in the project and highlighted several important aspects of practical machine learning:
-
-- Class balance needs to be considered when defining evaluation metrics.
-- Accuracy can hide poor performance on minority classes.
-- Per-class F1-scores provide a more informative evaluation for this problem.
-- Class weighting can substantially affect minority-class performance.
-- Different algorithms can respond differently to the same weighting strategy.
-- Random Forest achieved the strongest overall results, reaching approximately **90% performance**.
-- Manual hyperparameter tuning was useful as a first approach, but later problems motivated more systematic optimization methods.
+The **Random Forest** achieved the best overall performance according to accuracy,
 
 ### P2 — Clan Rank Regression
 
@@ -724,7 +692,13 @@ For comparison, the Random Forest v2 model achieved:
 | RMSE | 3.4162 |
 | R² | 0.9077 |
 
-(falta ridge con trophies avisar a alvaro al leer esto)
+Ridge Regression achieved:
+
+| Metric | Ridge Regression |
+|---|---:|
+| MAE | 4.1836 |
+| RMSE | 5.5754 |
+| R² | 0.7541 |
 
 The difference between the two models was relatively small, but XGBoost achieved the strongest overall results.
 
@@ -1982,3 +1956,332 @@ Experiments that use Optuna perform the configured hyperparameter search automat
 After running the experiments, the corresponding results scripts can be used to analyze the trained models and generate metrics, visualizations and comparisons.
 
 Each problem has its own results workflow. **P5 is an exception:** executing the P5 pipeline also produces problem-specific results, but the project additionally includes a **global results analysis** that consolidates the main results
+
+## 📁 Repository Structure
+
+The repository is organized into separate layers for data extraction, feature engineering, machine learning experiments, result analysis and experiment tracking.
+
+```text
+clash-of-clans-ml-lab/
+│
+├── mlflow/
+│   └── mlflow.db                  # Generated locally
+│
+├── mlflow_tracking/
+│   ├── experiments.py
+│   └── tracking_utils.py
+│
+├── notebooks/
+│   └── eda/
+│       ├── eda_p1.ipynb
+│       ├── eda_p2.ipynb
+│       ├── eda_p3.ipynb
+│       ├── eda_p4.ipynb
+│       └── eda_p5.ipynb
+│
+├── src/
+│   ├── audit/
+│   │   └── dataset_audit.py
+│   │
+│   ├── extraction/
+│   │   ├── api_client.py
+│   │   ├── config.py
+│   │   ├── main_extraction.py
+│   │   ├── search_config.py
+│   │   └── storage.py
+│   │
+│   ├── features/
+│   │   ├── problem1/
+│   │   ├── problem2/
+│   │   ├── problem3/
+│   │   ├── problem4/
+│   │   └── problem5/
+│   │
+│   ├── models/
+│   │   ├── P1/
+│   │   ├── P2/
+│   │   ├── P3/
+│   │   ├── P4/
+│   │   └── P5/
+│   │
+│   ├── processing/
+│   │   └── build_normalized_tables.py
+│   │
+│   └── results/
+│       ├── P1/
+│       ├── P2/
+│       ├── P3/
+│       ├── P4/
+│       └── P5/
+│
+├── tests/
+│   ├── test_api_client.py
+│   ├── test_dataset_audit.py
+│   ├── test_feature_engineering_problem1.py
+│   ├── test_main_extraction.py
+│   ├── test_mlflow_smoke.py
+│   ├── test_problem2_feature_engineering.py
+│   ├── test_problem3_feature_engineering.py
+│   ├── test_problem4_feature_engineering.py
+│   ├── test_problem5_feature_engineering.py
+│   ├── test_processing.py
+│   └── test_search_config.py
+│
+├── src/results_p1.py
+├── src/results_p2.py
+├── src/results_p3.py
+├── src/results_p4.py
+├── src/results_p5.py
+│
+├── .gitignore
+├── LICENSE
+├── MLFLOW_SETUP.md
+├── README.md
+└── requirements.txt
+```
+
+### Directory Overview
+
+| Directory / File | Description |
+|---|---|
+| `src/extraction/` | Handles data collection from the Clash of Clans Developer API, including API communication, search configuration and local storage. |
+| `src/audit/` | Contains tools for auditing the collected raw data and checking its structure and quality. |
+| `src/processing/` | Contains general-purpose data processing utilities used before the problem-specific ML pipelines. |
+| `src/features/` | Contains the feature engineering and dataset construction pipelines for each machine learning problem. |
+| `src/models/` | Contains the machine learning experiments, organized by problem (`P1`–`P5`). |
+| `src/results/` | Stores generated result artifacts for each problem, including metrics, plots, comparisons and summaries. |
+| `src/results_p*.py` | Global result-analysis scripts for each problem. |
+| `mlflow_tracking/` | Contains reusable utilities for configuring MLflow, managing experiments and logging parameters, metrics, models and artifacts. |
+| `mlflow/` | Contains the local MLflow SQLite database and tracking data generated during experimentation. These files are created locally and are not included in the repository. |
+| `notebooks/eda/` | Contains the Exploratory Data Analysis notebooks for P1–P5. |
+| `tests/` | Contains automated tests covering extraction, dataset auditing, feature engineering, processing and MLflow functionality. |
+| `MLFLOW_SETUP.md` | Detailed instructions for configuring and running the local MLflow tracking server. |
+| `requirements.txt` | Python dependencies required by the project. |
+
+### Problem Organization
+
+The project deliberately separates **feature engineering** from **model experimentation**.
+
+For each problem, the workflow follows the same general structure:
+
+```text
+src/features/problemX/
+        ↓
+Problem-Specific Dataset
+        ↓
+src/models/PX/
+        ↓
+Machine Learning Experiments
+        ↓
+src/results/PX/
+        ↓
+src/results_pX.py
+```
+
+This separation allows the generated datasets to be used across different models and experiments while keeping feature engineering independent from model training.
+
+### Results Organization
+
+Each problem has a dedicated directory under `src/results/` containing its generated result artifacts.
+
+Depending on the problem, these may include:
+
+- **Metric comparisons**
+- **Confusion matrices**
+- **Actual vs. predicted plots**
+- **Residual analysis**
+- **Feature importance**
+- **Cluster profiles**
+- **Evaluation summaries**
+- **CSV and JSON result files**
+
+P5 additionally contains experiment-specific results for **K-Means** and **DBSCAN**, while `src/results_p5.py` provides the main consolidated analysis for the problem.
+
+## ⚠️ Limitations & Technical Challenges
+
+Building the project around real Clash of Clans data introduced several limitations that affected both the data collection process and the machine learning experiments.
+
+Rather than hiding these constraints, they became part of the project and influenced several of the design decisions described throughout the repository.
+
+### Data Collection Constraints
+
+The Clash of Clans Developer API imposes a relatively restrictive request rate. During data collection, only approximately **6–7 API requests per minute** could be performed reliably.
+
+This made collecting a large and diverse dataset a slow process.
+
+To improve the diversity of the collected data, the crawler does not repeatedly query the same generic searches. Instead, it generates combinations of different clan filters, including:
+
+- Clan member count
+- Clan level
+- Clan points
+
+The resulting search space contains **dozens of different filter combinations**, which are progressively explored through the crawler's search history.
+
+This approach does not remove the API rate limitation, but it makes each request more useful by increasing the probability of discovering clans and players from different parts of the game.
+
+### P1 — Class Imbalance
+
+The **Clan Member Role Classification** problem contains an inherent class imbalance that cannot be completely solved through additional data collection.
+
+Each clan can only have a limited number of members in leadership roles, while the majority of players are regular members. In particular, there can only be **one leader per clan**, meaning that collecting more clans increases the number of leader examples only proportionally to the number of clans.
+
+This makes the leader class fundamentally much smaller than the other classes.
+
+To account for this imbalance during training, **class weighting** was used to give greater importance to the underrepresented classes.
+
+This is an important limitation of the problem itself rather than simply a consequence of having too little data.
+
+### P3 — Historical Performance vs. Future Prediction
+
+P3 was initially designed around the relationship between clan characteristics and **war performance**.
+
+The final target, `war_success_rate`, represents the clan's existing war record. Therefore, the experiment investigates how much of the observed performance can be explained by the available clan characteristics, rather than predicting genuinely unseen future performance.
+
+I investigated the possibility of turning the problem into a true future-performance prediction task. This would require collecting clans with **public war history**, recording their current state, waiting for a sufficiently long period of new war activity, and then using the newly collected information as future outcomes.
+
+This approach would have required waiting roughly **two months** before obtaining enough new observations for the complete modeling process. In addition, only a limited number of clans had the required public war history available.
+
+Given the scope of the project and the resulting reduction in the available population, I decided not to pursue this approach.
+
+Therefore, P3 should be interpreted as an analysis of **historical/current war performance**, not as a validated forecasting system for future wars.
+
+### P5 — Computational Constraints
+
+The clustering problem was built using approximately **836,000 players**, making some unsupervised learning algorithms considerably more expensive than their supervised counterparts.
+
+#### Silhouette Analysis
+
+Evaluating the silhouette score on the complete dataset for every possible number of clusters would have been computationally expensive.
+
+To keep the experiment practical, a **50,000-player sample** was used for silhouette evaluation when comparing K-Means configurations.
+
+Using the complete dataset would have made the experiment take approximately **16 hours**, which was disproportionate to the objective of the experiment.
+
+The full dataset was still used for the final K-Means clustering once the number of clusters had been selected.
+
+#### DBSCAN
+
+DBSCAN did not behave as expected on the player dataset.
+
+Instead of producing a small number of meaningful player groups, the best configuration generated **a very large number of small clusters and a very high proportion of noise points**.
+
+The resulting clustering was not useful for the intended analysis, making DBSCAN a good example of an algorithm that can perform poorly when its assumptions do not match the structure of the dataset.
+
+#### Agglomerative Clustering
+
+Agglomerative clustering presented a more fundamental computational limitation.
+
+Running the algorithm on the complete player dataset would require an estimated **2.55 TiB of memory** for the necessary pairwise computations.
+
+Reducing the dataset manually to a smaller subset was considered, but constructing a representative sample that simultaneously preserved the wide range of player characteristics and maintained a reasonable balance across the different aspects of the game would have been difficult.
+
+Since this additional experiment was not essential to the main objectives of the project, the full Agglomerative experiment was not executed.
+
+The implementation remains in the repository as an additional experiment, but its full-scale execution is intentionally not part of the standard workflow.
+
+### MLflow Configuration Challenges
+
+MLflow also introduced some practical problems during development.
+
+At one point, incorrect MLflow server commands caused multiple empty `mlflow.db` files and tracking directories to be generated in different locations.
+
+The problem was ultimately caused by incorrect command syntax and configuration rather than by MLflow itself.
+
+This highlighted a simple but important lesson when working with local experiment tracking: **the tracking URI, backend store and artifact location must be configured consistently**.
+
+For this reason, the project keeps the MLflow startup command explicitly documented rather than relying on manually reconstructing it each time.
+
+### Project Scope
+
+This project is intentionally **not a production MLOps system**.
+
+It is one of my more serious personal machine learning projects, but its primary objective is to explore machine learning in depth while introducing some real ML Engineering practices.
+
+The project includes:
+
+- Extensive exploratory data analysis
+- Dataset construction and feature engineering
+- Multiple supervised and unsupervised algorithms
+- Model comparison
+- Hyperparameter optimization
+- Evaluation metrics
+- Result visualization
+- Experiment tracking with MLflow
+- Reproducible experiment configuration
+
+However, it does not attempt to implement a complete production infrastructure.
+
+For example, the project does not currently include:
+
+- Docker-based deployment
+- Kubernetes
+- CI/CD
+- Cloud infrastructure
+- Model serving
+- Production monitoring
+- Automated retraining
+
+The scope was deliberately kept focused on **understanding and experimenting with machine learning while introducing MLflow as the main MLOps component**, rather than trying to simulate an entire production ML platform.
+
+### What These Limitations Taught Me
+
+These constraints were also useful from a learning perspective.
+
+The project showed that machine learning is not only about selecting an algorithm and optimizing its parameters. Real projects are also constrained by:
+
+- Data availability
+- API limitations
+- Class distributions
+- Target definition
+- Computational resources
+- Algorithmic assumptions
+- Experiment management
+
+Several experiments produced results that were weaker or less useful than initially expected. Rather than treating this as a failure of the project, these cases became part of the analysis and helped demonstrate where particular approaches were appropriate — and where they were not.
+
+## 🗺️ Roadmap
+
+The project is considered complete as a machine learning laboratory, but there are several possible directions for future development.
+
+Potential improvements include:
+
+- Rework and finalize the **P1 dataset and results** after resolving the current data issue.
+- Expand the dataset with additional clans and players as more data becomes available.
+- Improve the data collection strategy to increase population diversity.
+- Explore additional feature engineering strategies for the existing problems.
+- Experiment with additional machine learning algorithms and modeling approaches.
+- Investigate more robust approaches to **player clustering**.
+- Explore a true **future war-performance prediction** setup if enough public war-history data becomes available.
+- Improve the project's ML Engineering layer with additional automation and reproducibility.
+- Potentially introduce **Docker, CI/CD, model serving and cloud infrastructure** in a future iteration.
+
+## 📚 References
+
+The project is based primarily on the official documentation of the tools, libraries and data source used throughout the pipeline.
+
+- **Clash of Clans Developer API** — Official API documentation used for data collection.
+- **MLflow Documentation** — Experiment tracking, model logging, parameters, metrics and artifacts.
+- **scikit-learn Documentation** — Machine learning algorithms, preprocessing, evaluation metrics and clustering.
+- **XGBoost Documentation** — Gradient boosting models used in the supervised learning experiments.
+- **Optuna Documentation** — Hyperparameter optimization used in P2, P3 and P4.
+- **Pandas Documentation** — Data manipulation and dataset processing.
+- **NumPy Documentation** — Numerical computing and array operations.
+- **PyArrow Documentation** — Parquet dataset storage and processing.
+- **Matplotlib Documentation** — Data visualization and result plots.
+- **Seaborn Documentation** — Statistical visualization used during exploratory data analysis.
+- **aiohttp Documentation** — Asynchronous HTTP requests used by the data collection pipeline.
+- **python-dotenv Documentation** — Environment variable management for API configuration.
+
+## 📄 License
+
+This project is licensed under the **MIT License**.
+
+See the [`LICENSE`](LICENSE) file for the complete license text.
+
+## 👤 Author
+
+**Oteope**
+
+Machine Learning / MLOps enthusiast focused on building practical machine learning systems and understanding the engineering behind them.
+
+GitHub: **[Oteope](https://github.com/oteope)**

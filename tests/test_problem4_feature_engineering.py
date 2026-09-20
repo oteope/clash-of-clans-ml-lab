@@ -1,4 +1,4 @@
-"""Tests para el builder del dataset de clasificación de clanes (Problema 4)."""
+"""Tests for the clan classification dataset builder (Problem 4)."""
 
 import sys
 from pathlib import Path
@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-# Añadir src al path para importar features
+# Add src to the path to import features
 SRC_PATH = Path(__file__).resolve().parents[1] / "src"
 if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
@@ -121,7 +121,7 @@ def test_reuses_regression_features():
     )
     result = build_performance_classification_dataset(df, 0.4, 0.6)
 
-    # Columnas que deberían conservarse
+    # Columns that should be retained
     preserved = ["structural_feature_1", "composition_feature_2"]
     for col in preserved:
         assert col in result.columns
@@ -130,7 +130,7 @@ def test_reuses_regression_features():
             result_val = result.loc[result["clan_tag"] == tag, col].iloc[0]
             assert original_val == result_val
 
-    # La única columna nueva debe ser performance_class
+    # The only new column must be performance_class
     assert set(result.columns) - set(df.columns) == {"performance_class"}
 
 
@@ -138,10 +138,10 @@ def test_reuses_regression_features():
     "low, high",
     [
         (0.6, 0.4),      # low >= high
-        (-0.1, 0.6),     # low fuera de rango
-        (0.4, 1.1),      # high fuera de rango
-        (0.2, 0.2),      # iguales
-        (1.5, 2.0),      # ambos fuera de rango
+        (-0.1, 0.6),     # low out of range
+        (0.4, 1.1),      # high out of range
+        (0.2, 0.2),      # equal
+        (1.5, 2.0),      # both out of range
     ],
 )
 def test_threshold_validation(low, high):
@@ -157,11 +157,11 @@ def test_war_success_rate_validation_nan_and_out_of_range():
     with pytest.warns(UserWarning):
         result = build_performance_classification_dataset(df, 0.4, 0.6)
 
-    # Solo deben quedar los valores válidos: 0.3 y 0.7
+    # Only valid values should remain: 0.3 and 0.7
     expected_tags = {"#CLAN2", "#CLAN4"}
     assert set(result["clan_tag"]) == expected_tags
 
-    # No debe haber clases inválidas
+    # There must be no invalid classes
     assert set(result["performance_class"]).issubset({"low", "medium", "high"})
     assert result["performance_class"].notna().all()
 

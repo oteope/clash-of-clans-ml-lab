@@ -192,7 +192,7 @@ class TestProblem2Dataset(unittest.TestCase):
         for _, row in merged.iterrows():
             self.assertIn(row["trophies"], [2500, 3000, 3500, 2800])
 
-    # --- Nuevos tests para la tarea ---
+    # --- New tests for the task ---
 
     def test_audit_returns_results(self):
         self.assertGreater(len(self.analysis), 0)
@@ -226,7 +226,7 @@ class TestProblem2Dataset(unittest.TestCase):
         self.assertEqual(len(merged), 4)
 
     def test_merge_for_analysis_with_player_tag_index(self):
-        # Caso con índice sin nombre que contiene player_tag
+        # Case with an unnamed index that contains player_tag
         pf_indexed = self.player_features.set_index("player_tag").rename_axis(None)
         merged = _merge_for_analysis(self.clan_members, pf_indexed)
         self.assertIn("player_tag", merged.columns)
@@ -242,7 +242,7 @@ class TestProblem2Dataset(unittest.TestCase):
         self.assertIn("Número de observaciones analizadas: 4", output)
         mock_load.assert_called_once()
 
-    # --- Tests para variantes con/sin trophies ---
+    # --- Tests for variants with/without trophies ---
 
     def test_variants_same_granularity(self):
         with_df = build_clan_rank_features(

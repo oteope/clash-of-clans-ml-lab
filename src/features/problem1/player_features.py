@@ -15,10 +15,10 @@ def aggregate_progression_df(
     prefix: str = "",
 ) -> pd.DataFrame:
     """
-    Agrega una tabla de progresión (tropas, héroes, hechizos, equipo)
-    por jugador.
+    Aggregate a progression table (troops, heroes, spells, equipment)
+    by player.
 
-    Retorna un DataFrame indexado por player_tag con:
+    Return a DataFrame indexed by player_tag with:
       - {prefix}_count
       - {prefix}_mean_level
       - {prefix}_mean_completion_ratio
@@ -49,9 +49,9 @@ def aggregate_progression_df(
 
 def aggregate_achievements(ach_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Agrega la tabla de logros por jugador.
+    Aggregate the achievements table by player.
 
-    Retorna un DataFrame indexado por player_tag con:
+    Return a DataFrame indexed by player_tag with:
       - achievement_count
       - achievement_completion_ratio
     """
@@ -75,7 +75,7 @@ def aggregate_achievements(ach_df: pd.DataFrame) -> pd.DataFrame:
 def _chunk_progression_agg(
     df: pd.DataFrame, level_col: str, max_col: str
 ) -> pd.DataFrame:
-    """Devuelve agregación parcial de un chunk de tabla de progresión."""
+    """Return a partial aggregation for a progression-table chunk."""
     if df.empty:
         return pd.DataFrame()
     df = df.copy()
@@ -91,7 +91,7 @@ def _chunk_progression_agg(
 
 
 def _chunk_achievements_agg(df: pd.DataFrame) -> pd.DataFrame:
-    """Devuelve agregación parcial de un chunk de logros."""
+    """Return a partial aggregation for an achievements-table chunk."""
     if df.empty:
         return pd.DataFrame()
     df = df.copy()
@@ -109,7 +109,7 @@ def _stream_groupby(
     parquet_path: Path, batch_size: int, chunk_agg_fn
 ) -> pd.DataFrame:
     """
-    Lee un archivo Parquet por batches y acumula agregaciones por player_tag.
+    Read a Parquet file in batches and accumulate aggregations by player_tag.
     """
     parquet_file = pq.ParquetFile(parquet_path)
     acc = pd.DataFrame()
@@ -126,7 +126,7 @@ def _stream_groupby(
 
 
 def _finalize_progression(acc: pd.DataFrame, prefix: str) -> pd.DataFrame:
-    """Convierte acumulador de progresión en columnas finales."""
+    """Convert a progression accumulator into final columns."""
     if acc.empty:
         return pd.DataFrame(
             columns=[
@@ -147,7 +147,7 @@ def _finalize_progression(acc: pd.DataFrame, prefix: str) -> pd.DataFrame:
 
 
 def _finalize_achievements(acc: pd.DataFrame) -> pd.DataFrame:
-    """Convierte acumulador de logros en columnas finales."""
+    """Convert an achievements accumulator into final columns."""
     if acc.empty:
         return pd.DataFrame(
             columns=["achievement_count", "achievement_completion_ratio"],
@@ -171,11 +171,11 @@ def build_player_features(
     achievements_df: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Construye las features a nivel de jugador.
+    Build player-level features.
 
-    Una fila por player_tag.
+    One row per player_tag.
     """
-    # Columnas base directamente desde players.parquet
+    # Base columns directly from players.parquet
     base_cols = [
         "player_tag",
         "town_hall_level",
@@ -194,7 +194,7 @@ def build_player_features(
     ]
     base = players_df[base_cols].copy()
 
-    # Features derivadas del perfil base
+    # Features derived from the base profile
     base["donation_balance"] = base["donations"] - base["donations_received"]
     base["donation_ratio"] = (
         base["donations"] / base["donations_received"].replace(0, np.nan)
@@ -208,14 +208,14 @@ def build_player_features(
         / base["best_builder_base_trophies"].replace(0, np.nan)
     )
 
-    # Agregaciones de tablas de progresión
+    # Progression-table aggregations
     troops_agg = aggregate_progression_df(troops_df, prefix="troop")
     heroes_agg = aggregate_progression_df(heroes_df, prefix="hero")
     spells_agg = aggregate_progression_df(spells_df, prefix="spell")
     equipment_agg = aggregate_progression_df(equipment_df, prefix="equipment")
     achievements_agg = aggregate_achievements(achievements_df)
 
-    # Unir todas las fuentes
+    # Join all sources
     result = base.merge(troops_agg, left_on="player_tag", right_index=True, how="left")
     result = result.merge(heroes_agg, left_on="player_tag", right_index=True, how="left")
     result = result.merge(spells_agg, left_on="player_tag", right_index=True, how="left")
@@ -226,7 +226,7 @@ def build_player_features(
         achievements_agg, left_on="player_tag", right_index=True, how="left"
     )
 
-    # Rellenar valores nulos numéricos con 0
+    # Fill null numeric values with 0
     for col in result.columns:
         if col == "player_tag":
             continue
@@ -239,14 +239,14 @@ def build_player_features_from_files(
     processed_dir: Path, batch_size: int = FEATURE_BATCH_SIZE
 ) -> pd.DataFrame:
     """
-    Construye player features sin cargar tablas gigantes completas.
+    Build player features without loading entire large tables.
 
-    Lee players.parquet y las tablas de progresión por batches.
+    Read players.parquet and progression tables in batches.
     """
-    # Cargar tabla compacta de jugadores
+    # Load compact player table
     players_df = pd.read_parquet(processed_dir / "players.parquet")
 
-    # Agregaciones por batches para cada tabla grande
+    # Batch aggregations for each large table
     troops_acc = _stream_groupby(
         processed_dir / "player_troops.parquet",
         batch_size,
@@ -279,7 +279,7 @@ def build_player_features_from_files(
     equipment_agg = _finalize_progression(equipment_acc, "equipment")
     achievements_agg = _finalize_achievements(achievements_acc)
 
-    # Construir features base
+    # Build base features
     base_cols = [
         "player_tag",
         "town_hall_level",
@@ -311,7 +311,7 @@ def build_player_features_from_files(
         / base["best_builder_base_trophies"].replace(0, np.nan)
     )
 
-    # Unir agregaciones
+    # Join aggregations
     result = base.merge(troops_agg, left_on="player_tag", right_index=True, how="left")
     result = result.merge(heroes_agg, left_on="player_tag", right_index=True, how="left")
     result = result.merge(spells_agg, left_on="player_tag", right_index=True, how="left")
@@ -322,7 +322,7 @@ def build_player_features_from_files(
         achievements_agg, left_on="player_tag", right_index=True, how="left"
     )
 
-    # Rellenar valores nulos numéricos con 0
+    # Fill null numeric values with 0
     for col in result.columns:
         if col == "player_tag":
             continue

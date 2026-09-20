@@ -1,1 +1,1 @@
-"""Feature engineering para el Problema 2 de Clash of Clans ML Lab."""
+"""Feature engineering for Problem 2 of Clash of Clans ML Lab."""

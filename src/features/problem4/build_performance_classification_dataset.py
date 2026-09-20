@@ -1,7 +1,7 @@
-"""Builder para el dataset de clasificación de clanes según rendimiento.
+"""Builder for the clan classification dataset by performance.
 
-Reutiliza el dataset de regresión del Problema 3 y asigna una clase
-de rendimiento (low/medium/high) en función de war_success_rate.
+Reuse the Problem 3 regression dataset and assign a performance class
+(low/medium/high) based on war_success_rate.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 
 
-# Variables que no deben usarse como features predictoras.
+# Variables that should not be used as predictive features.
 EXCLUDED_COLUMNS = [
     "war_wins",
     "war_losses",
@@ -33,28 +33,28 @@ def build_performance_classification_dataset(
     high_threshold: float,
 ) -> pd.DataFrame:
     """
-    Construye el dataset de clasificación a partir del dataset de regresión.
+    Build the classification dataset from the regression dataset.
 
     Parameters
     ----------
     regression_df : pd.DataFrame
-        Dataset de regresión del Problema 3 (clan_war_performance_regression.parquet).
-        Debe contener al menos las columnas ``clan_tag`` y ``war_success_rate``.
+        Problem 3 regression dataset (clan_war_performance_regression.parquet).
+        It must contain at least the ``clan_tag`` and ``war_success_rate`` columns.
     low_threshold : float
-        Umbral inferior. Los clanes con ``war_success_rate < low_threshold``
-        se clasifican como ``low``.
+        Lower threshold. Clans with ``war_success_rate < low_threshold``
+        are classified as ``low``.
     high_threshold : float
-        Umbral superior. Los clanes con ``war_success_rate >= high_threshold``
-        se clasifican como ``high``. El resto se clasifica como ``medium``.
+        Upper threshold. Clans with ``war_success_rate >= high_threshold``
+        are classified as ``high``. The remainder are classified as ``medium``.
 
     Returns
     -------
     pd.DataFrame
-        DataFrame con una fila por clan, las features predictoras del Problema 3
-        (excluyendo las variables de resultado bélico) y la columna
-        ``performance_class`` con valores ``low``, ``medium`` o ``high``.
+        DataFrame with one row per clan, the Problem 3 predictive features
+        (excluding war outcome variables), and the ``performance_class`` column
+        with ``low``, ``medium``, or ``high`` values.
     """
-    # Validación inicial: columnas imprescindibles.
+    # Initial validation: required columns.
     required_cols = {"clan_tag", "war_success_rate"}
     missing = required_cols - set(regression_df.columns)
     if missing:
@@ -62,7 +62,7 @@ def build_performance_classification_dataset(
             f"Faltan columnas requeridas en regression_df: {sorted(missing)}"
         )
 
-    # Validación de thresholds.
+    # Threshold validation.
     if low_threshold is None or high_threshold is None:
         raise ValueError("low_threshold y high_threshold son obligatorios.")
     if not (0.0 <= low_threshold <= 1.0):
@@ -72,10 +72,10 @@ def build_performance_classification_dataset(
     if low_threshold >= high_threshold:
         raise ValueError("low_threshold debe ser estrictamente menor que high_threshold.")
 
-    # Trabajamos sobre una copia para no modificar el DataFrame original.
+    # Work on a copy to avoid modifying the original DataFrame.
     df = regression_df.copy()
 
-    # 1. Validar war_success_rate (no nulo y dentro de [0, 1]).
+    # 1. Validate war_success_rate (non-null and within [0, 1]).
     invalid_mask = (
         df["war_success_rate"].isna()
         | (df["war_success_rate"] < 0.0)
@@ -95,7 +95,7 @@ def build_performance_classification_dataset(
             "No quedan observaciones válidas después de filtrar war_success_rate."
         )
 
-    # 2. Garantizar clan_tag único.
+    # 2. Ensure clan_tag is unique.
     if df["clan_tag"].duplicated().any():
         duplicated_tags = df.loc[df["clan_tag"].duplicated(), "clan_tag"].unique()
         raise ValueError(
@@ -103,7 +103,7 @@ def build_performance_classification_dataset(
             f"{list(duplicated_tags[:5])}"
         )
 
-    # 3. Crear la columna performance_class según los thresholds.
+    # 3. Create the performance_class column according to the thresholds.
     conditions = [
         df["war_success_rate"] < low_threshold,
         (df["war_success_rate"] >= low_threshold)
@@ -113,7 +113,7 @@ def build_performance_classification_dataset(
     choices = ["low", "medium", "high"]
     df["performance_class"] = np.select(conditions, choices, default="medium")
 
-    # 4. Eliminar columnas que no deben usarse como features.
+    # 4. Remove columns that should not be used as features.
     cols_to_drop = [col for col in EXCLUDED_COLUMNS if col in df.columns]
     df = df.drop(columns=cols_to_drop)
 

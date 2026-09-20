@@ -133,8 +133,8 @@ def _get_parquet_schemas() -> Dict[str, pa.Schema]:
             ("war_ties", pa.int64()),
             ("war_losses", pa.int64()),
             ("war_log_public", pa.bool_()),
-            ("war_league", pa.string()),      # JSON serializado
-            ("capital_league", pa.string()),  # JSON serializado
+            ("war_league", pa.string()),      # Serialized JSON
+            ("capital_league", pa.string()),  # Serialized JSON
             ("location_id", pa.int64()),
             ("location_name", pa.string()),
             ("type", pa.string()),

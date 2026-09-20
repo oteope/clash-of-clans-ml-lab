@@ -447,7 +447,7 @@ def run_audit(raw_data_dir: Path) -> Dict[str, Any]:
                 result["files"]["members_corrupt"] += 1
                 continue
 
-            # Tag del clan se toma siempre del nombre del archivo.
+            # The clan tag is always taken from the file name.
             clan_tag = _normalize_tag(file_path.stem)
             if clan_tag is None:
                 result["members"]["missing_clan_tag"] += 1
@@ -463,7 +463,7 @@ def run_audit(raw_data_dir: Path) -> Dict[str, Any]:
                     else:
                         result["members"]["valid_files"] += 1
                 elif "tag" in data:
-                    # Compatibilidad con formato anterior de un solo objeto.
+                    # Compatibility with the previous single-object format.
                     items = [data]
                     result["members"]["valid_files"] += 1
                 else:

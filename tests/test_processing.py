@@ -376,13 +376,13 @@ class TestBuildAllTablesIntegration(unittest.TestCase):
             "clan": {"tag": "#CLAN1", "name": "Clan A", "clanLevel": 5},
         })
 
-        # Primera ejecución
+        # First execution
         build_all_tables(raw_base=self.raw_base, processed_base=self.processed_base)
         players_first = self._read_parquet("players.parquet")
         count_first = len(players_first)
         self.assertEqual(count_first, 1)
 
-        # Segunda ejecución (debe limpiar y reconstruir)
+        # Second execution (must clean and rebuild)
         build_all_tables(raw_base=self.raw_base, processed_base=self.processed_base)
         players_second = self._read_parquet("players.parquet")
         count_second = len(players_second)
@@ -390,7 +390,7 @@ class TestBuildAllTablesIntegration(unittest.TestCase):
         self.assertEqual(count_first, count_second)
         self.assertEqual(count_second, 1)
 
-        # Los archivos raw no deben haber sido modificados
+        # The raw files must not have been modified
         raw_file = self.raw_base / "players" / "#PLAY1.json"
         self.assertTrue(raw_file.exists())
         with raw_file.open("r", encoding="utf-8") as f:
@@ -398,7 +398,7 @@ class TestBuildAllTablesIntegration(unittest.TestCase):
         self.assertEqual(raw_content["tag"], "#PLAY1")
 
     def test_corrupt_json_is_skipped(self):
-        # Archivo corrupto + archivo válido
+        # Corrupt file + valid file
         corrupt_path = self.raw_base / "players" / "corrupt.json"
         corrupt_path.parent.mkdir(parents=True, exist_ok=True)
         corrupt_path.write_text("{invalid json", encoding="utf-8")

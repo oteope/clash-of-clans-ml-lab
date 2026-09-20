@@ -25,7 +25,7 @@ from src.features.problem3.build_war_performance_dataset import (
 # Helpers
 # ---------------------------------------------------------------------------
 def write_data(tmp_path, clans, clan_members, player_features):
-    """Escribe los parquet de entrada y devuelve los directorios."""
+    """Write the input Parquet files and return the directories."""
     processed_dir = tmp_path / "processed"
     features_dir = tmp_path / "features"
     processed_dir.mkdir(exist_ok=True)
@@ -41,11 +41,11 @@ def write_data(tmp_path, clans, clan_members, player_features):
 
 def make_sample_dfs():
     """
-    Construye DataFrames de ejemplo con:
-    - Clanes con columnas estructurales (y una extra no permitida).
-    - clan_members donde el jugador 'P1' pertenece a dos clanes.
-    - player_features con columnas numéricas y de progresión,
-      incluyendo columnas que NO deben filtrarse como features (war_stars, etc.)
+    Build example DataFrames with:
+    - Clans with structural columns (and one disallowed extra column).
+    - clan_members in which player 'P1' belongs to two clans.
+    - player_features with numeric and progression columns,
+      including columns that MUST NOT be filtered as features (war_stars, etc.)
     """
     clans = pd.DataFrame(
         {
@@ -67,7 +67,7 @@ def make_sample_dfs():
             "is_family_friendly": [True, False, True, False, True, False],
             "location_id": [32000000] * 6,
             "location_name": ["Spain"] * 6,
-            "extra_col": [1, 2, 3, 4, 5, 6],  # columna no permitida
+            "extra_col": [1, 2, 3, 4, 5, 6],  # disallowed column
         }
     )
 
@@ -106,12 +106,12 @@ def make_sample_dfs():
 
 
 def get_feature_columns(df):
-    """Devuelve las columnas que no son identificador ni target."""
+    """Return columns that are neither identifiers nor targets."""
     return [c for c in df.columns if c not in ("clan_tag", "war_success_rate")]
 
 
 # ---------------------------------------------------------------------------
-# 1. Granularidad y target
+# 1. Granularity and target
 # ---------------------------------------------------------------------------
 def test_granularity_and_target_calculation(tmp_path):
     clans, clan_members, player_features = make_sample_dfs()
@@ -121,15 +121,15 @@ def test_granularity_and_target_calculation(tmp_path):
         processed_dir, features_dir, min_war_total=MIN_WAR_HISTORY_DEFAULT
     )
 
-    # 1 fila = 1 clan
+    # 1 row = 1 clan
     assert df["clan_tag"].is_unique
     assert len(df) == df["clan_tag"].nunique()
 
-    # rango del target
+    # Target range
     assert (df["war_success_rate"] >= 0).all()
     assert (df["war_success_rate"] <= 1).all()
 
-    # target exacto
+    # Exact target
     for _, row in df.iterrows():
         tag = row["clan_tag"]
         original = clans.loc[clans["clan_tag"] == tag].iloc[0]
@@ -140,7 +140,7 @@ def test_granularity_and_target_calculation(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 2. Target: no división por cero y rango
+# 2. Target: no division by zero and range
 # ---------------------------------------------------------------------------
 def test_target_no_division_by_zero(tmp_path):
     clans = pd.DataFrame(
@@ -149,7 +149,7 @@ def test_target_no_division_by_zero(tmp_path):
             "war_wins": [0, 3],
             "war_losses": [0, 1],
             "war_ties": [0, 0],
-            # columnas estructurales mínimas
+            # Minimum structural columns
             "clan_level": [1, 2],
             "clan_points": [1, 2],
             "clan_capital_points": [1, 2],
@@ -177,7 +177,7 @@ def test_target_no_division_by_zero(tmp_path):
 
     df = build_war_performance_dataset(processed_dir, features_dir, min_war_total=0)
 
-    # CZERO debe quedar fuera por NaN en target
+    # CZERO must be excluded because of NaN in the target
     assert "CZERO" not in df["clan_tag"].values
     assert "CPOS" in df["clan_tag"].values
     assert (df["war_success_rate"] >= 0).all()
@@ -185,7 +185,7 @@ def test_target_no_division_by_zero(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 3. Leakage del clan
+# 3. Clan leakage
 # ---------------------------------------------------------------------------
 def test_clan_leakage_excluded(tmp_path):
     clans, clan_members, player_features = make_sample_dfs()
@@ -201,7 +201,7 @@ def test_clan_leakage_excluded(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 4. Leakage del jugador
+# 4. Player leakage
 # ---------------------------------------------------------------------------
 def test_player_leakage_excluded(tmp_path):
     clans, clan_members, player_features = make_sample_dfs()
@@ -214,7 +214,7 @@ def test_player_leakage_excluded(tmp_path):
 
     for col in ["war_stars", "attack_wins", "defense_wins"]:
         assert col not in feature_cols
-        # no debe haber derivados como mean_war_stars, std_attack_wins, etc.
+        # There must be no derivatives such as mean_war_stars, std_attack_wins, etc.
         assert not any(col in c for c in feature_cols)
 
 
@@ -258,16 +258,16 @@ def test_player_in_multiple_clans_preserved(tmp_path):
     df = build_war_performance_dataset(processed_dir, features_dir, min_war_total=0)
 
     assert set(df["clan_tag"]) == {"C1", "C2"}
-    # El mismo jugador contribuye a ambos clanes (member_count = 1 para cada uno)
+    # The same player contributes to both clans (member_count = 1 for each)
     assert df.loc[df["clan_tag"] == "C1", "member_count"].iloc[0] == 1
     assert df.loc[df["clan_tag"] == "C2", "member_count"].iloc[0] == 1
-    # La feature del jugador se asigna a ambos clanes
+    # The player's feature is assigned to both clans
     assert df.loc[df["clan_tag"] == "C1", "mean_town_hall_level"].iloc[0] == 15
     assert df.loc[df["clan_tag"] == "C2", "mean_town_hall_level"].iloc[0] == 15
 
 
 # ---------------------------------------------------------------------------
-# 6. Player features: unicidad y agregación
+# 6. Player features: uniqueness and aggregation
 # ---------------------------------------------------------------------------
 def test_player_features_duplicate_raise_error(tmp_path):
     clans = pd.DataFrame(
@@ -293,7 +293,7 @@ def test_player_features_duplicate_raise_error(tmp_path):
     clan_members = pd.DataFrame({"player_tag": ["P1"], "clan_tag": ["C1"]})
     player_features = pd.DataFrame(
         {
-            "player_tag": ["P1", "P1"],  # duplicado
+            "player_tag": ["P1", "P1"],  # duplicate
             "town_hall_level": [15, 16],
             "exp_level": [100, 110],
         }
@@ -305,7 +305,7 @@ def test_player_features_duplicate_raise_error(tmp_path):
 
 
 def test_player_features_aggregation_uses_clan_tag(tmp_path):
-    # El mismo jugador en un solo clan, con varias columnas fuente
+    # The same player in a single clan, with multiple source columns
     clans = pd.DataFrame(
         {
             "clan_tag": ["C1"],
@@ -348,7 +348,7 @@ def test_player_features_aggregation_uses_clan_tag(tmp_path):
 
     df = build_war_performance_dataset(processed_dir, features_dir, min_war_total=0)
 
-    # Las agregaciones de progresión deben aparecer
+    # Progression aggregations must appear
     expected_cols = [
         "mean_town_hall_level",
         "mean_exp_level",
@@ -368,7 +368,7 @@ def test_player_features_aggregation_uses_clan_tag(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 7. Features estructurales
+# 7. Structural features
 # ---------------------------------------------------------------------------
 def test_only_whitelisted_structural_features(tmp_path):
     clans, clan_members, player_features = make_sample_dfs()
@@ -379,15 +379,15 @@ def test_only_whitelisted_structural_features(tmp_path):
     )
     feature_cols = get_feature_columns(df)
 
-    # No debe aparecer la columna extra no permitida
+    # The disallowed extra column must not appear
     assert "extra_col" not in feature_cols
 
-    # Cualquier columna de origen clan debe estar en la whitelist o ser aggregated de player
+    # Any clan-source column must be in the whitelist or be aggregated from player data
     allowed_clan_cols = set(CLAN_STRUCTURAL_FEATURES)
     for col in feature_cols:
-        # Las agregaciones de player tendrán prefijos conocidos o serán columnas creadas;
-        # en este test, comprobamos que ninguna columna de clan fuera de whitelist
-        # aparezca en el resultado.
+        # Player aggregations will have known prefixes or be created columns;
+        # in this test, we verify that no clan column outside the whitelist
+        # appears in the result.
         if col in clans.columns:
             assert col in allowed_clan_cols, f"Columna de clan no permitida: {col}"
 
@@ -409,12 +409,12 @@ def test_fill_missing_values_policy():
     assert filled["num_col"].tolist() == [1, 0, 0]
     assert filled["bool_col"].tolist() == [True, False, False]
     assert filled["cat_col"].tolist() == ["a", "unknown", "c"]
-    # clan_tag no se modifica
+    # clan_tag is not modified
     assert filled["clan_tag"].tolist() == ["C1", "C2", "C3"]
 
 
 # ---------------------------------------------------------------------------
-# 9. Inmutabilidad
+# 9. Immutability
 # ---------------------------------------------------------------------------
 def test_fill_missing_values_does_not_modify_input():
     df = pd.DataFrame(
@@ -486,7 +486,7 @@ def test_min_war_total_threshold(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# 11. Reproducibilidad
+# 11. Reproducibility
 # ---------------------------------------------------------------------------
 def test_reproducibility(tmp_path):
     clans, clan_members, player_features = make_sample_dfs()

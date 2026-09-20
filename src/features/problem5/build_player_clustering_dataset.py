@@ -14,7 +14,7 @@ DATASETS_DIR = PROJECT_ROOT / "data" / "datasets"
 PLAYER_FEATURES_FILE = FEATURES_DIR / "player_features.parquet"
 OUTPUT_FILE = DATASETS_DIR / "player_clustering.parquet"
 
-# Features base solicitadas explícitamente.
+# Explicitly requested base features.
 CANDIDATE_FEATURES: List[str] = [
     "town_hall_level",
     "builder_hall_level",
@@ -43,7 +43,7 @@ CANDIDATE_FEATURES: List[str] = [
     "achievement_completion_ratio",
 ]
 
-# Features derivadas numéricas citadas como ejemplos en el enunciado.
+# Derived numeric features cited as examples in the specification.
 DERIVED_CANDIDATE_FEATURES: List[str] = [
     "donation_balance",
     "donation_ratio",
@@ -52,7 +52,7 @@ DERIVED_CANDIDATE_FEATURES: List[str] = [
     "builder_progression_ratio",
 ]
 
-# Columnas que nunca deben usarse como features de clustering.
+# Columns that must never be used as clustering features.
 EXCLUDED_COLUMNS = {
     "player_tag",
     "clan_tag",
@@ -64,7 +64,7 @@ EXCLUDED_COLUMNS = {
     "performance_class",
 }
 
-# Subcadenas que indican targets, labels, predicciones o agrupaciones.
+# Substrings that indicate targets, labels, predictions, or groupings.
 EXCLUDED_SUBSTRINGS = (
     "target",
     "label",
@@ -114,10 +114,10 @@ def build_player_clustering_dataset(
     player_features_path: Path = PLAYER_FEATURES_FILE,
     output_path: Path = OUTPUT_FILE,
 ) -> Dict[str, Any]:
-    """Construye el dataset de clustering de jugadores a partir de player_features.parquet.
+    """Build the player clustering dataset from player_features.parquet.
 
-    Solo se utilizan las columnas incluidas en la whitelist explícita.
-    No se aplica escalado, PCA ni selección de clusters.
+    Only columns included in the explicit whitelist are used.
+    No scaling, PCA, or cluster selection is applied.
     """
     df = _load_features(player_features_path)
     df = _ensure_player_tag_column(df)
@@ -130,13 +130,13 @@ def build_player_clustering_dataset(
 
     player_tag = df["player_tag"].copy()
 
-    # Separar features del identificador.
+    # Separate features from the identifier.
     feature_df = df.drop(columns=["player_tag"])
 
     excluded_columns = [col for col in feature_df.columns if _is_excluded_column(col)]
     feature_df = feature_df.drop(columns=excluded_columns)
 
-    # WHITELIST explícita: CANDIDATE_FEATURES + DERIVED_CANDIDATE_FEATURES
+    # Explicit WHITELIST: CANDIDATE_FEATURES + DERIVED_CANDIDATE_FEATURES
     whitelist = list(dict.fromkeys(CANDIDATE_FEATURES + DERIVED_CANDIDATE_FEATURES))
     candidate_features_total = len(whitelist)
 
@@ -168,7 +168,7 @@ def build_player_clustering_dataset(
     for col in numeric_candidate_cols:
         n_missing = missing_info[col]["missing_count"]
 
-        # Si toda la columna está vacía, no aporta información.
+        # If the entire column is empty, it provides no information.
         if n_missing == len(feature_df):
             imputed_df.drop(columns=[col], inplace=True)
             dropped_all_missing.append(col)
@@ -185,7 +185,7 @@ def build_player_clustering_dataset(
 
     final_feature_cols = imputed_df.columns.tolist()
 
-    # Validaciones finales.
+    # Final validations.
     if imputed_df.isna().any().any():
         raise ValueError("El dataset final aún contiene valores missing.")
 

@@ -5,30 +5,30 @@ import pandas as pd
 
 
 # ---------------------------------------------------------------------------
-# Paths por defecto
+# Default paths
 # ---------------------------------------------------------------------------
 PROCESSED_DIR_DEFAULT = Path("data/processed")
 FEATURES_DIR_DEFAULT = Path("data/features")
 DATASETS_DIR_DEFAULT = Path("data/datasets")
 
 # ---------------------------------------------------------------------------
-# Umbral mínimo de historial bélico
+# Minimum war-history threshold
 #
-# Este valor se fija después de inspeccionar la distribución de:
+# This value is set after inspecting the distribution of:
 #   war_total = war_wins + war_losses + war_ties
 #
-# Para no tomar esta decisión a ciegas, se proporciona la función
-# ``_analyze_war_total_distribution``, que imprime la distribución por
-# tramos y permite justificar el umbral con datos reales.
+# To avoid making this decision blindly, the
+# ``_analyze_war_total_distribution`` function is provided. It prints the
+# distribution by ranges and makes it possible to justify the threshold with real data.
 #
-# Con los datos disponibles, el mínimo de 5 guerras descarta clanes
-# anecdóticos (0-1 guerras) y reduce el riesgo de tasas inestables por
-# historial insuficiente, sin eliminar una fracción excesiva de clanes.
+# With the available data, the minimum of 5 wars discards anecdotal clans
+# (0–1 wars) and reduces the risk of unstable rates due to insufficient
+# history, without removing an excessive fraction of clans.
 # ---------------------------------------------------------------------------
 MIN_WAR_HISTORY_DEFAULT = 5
 
 # ---------------------------------------------------------------------------
-# Variables relacionadas con guerra que NO deben usarse como features.
+# War-related variables that must NOT be used as features.
 # ---------------------------------------------------------------------------
 EXCLUDED_WAR_FEATURES = {
     "war_wins",
@@ -38,7 +38,7 @@ EXCLUDED_WAR_FEATURES = {
     "war_points",
 }
 
-# Derivadas directas de las variables anteriores
+# Direct derivatives of the preceding variables
 DERIVED_WAR_FEATURES = {
     "total_wars",
     "win_rate",
@@ -48,9 +48,9 @@ DERIVED_WAR_FEATURES = {
 }
 
 # ---------------------------------------------------------------------------
-# Whitelist explícita de features estructurales del clan.
-# Cualquier columna de clans.parquet que no esté en esta lista no se usará
-# como feature, aunque no sea una variable de guerra.
+# Explicit whitelist of clan structural features.
+# Any clans.parquet column not in this list will not be used as a feature,
+# even if it is not a war variable.
 # ---------------------------------------------------------------------------
 CLAN_STRUCTURAL_FEATURES = [
     "clan_level",
@@ -70,10 +70,10 @@ CLAN_STRUCTURAL_FEATURES = [
 
 def _analyze_war_total_distribution(clans_df: pd.DataFrame) -> pd.DataFrame:
     """
-    Imprime y devuelve la distribución de ``war_total`` por tramos.
+    Print and return the distribution of ``war_total`` by ranges.
 
-    Esta función permite inspeccionar la masa de clanes con historial 0,
-    1, 2, ... y elegir un umbral mínimo de historial bélico razonable.
+    This function makes it possible to inspect the population of clans with
+    history 0, 1, 2, ... and choose a reasonable minimum war-history threshold.
     """
     if "war_total" not in clans_df.columns:
         df = clans_df.copy()
@@ -111,7 +111,7 @@ def _analyze_war_total_distribution(clans_df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _read_parquet(path: Path) -> pd.DataFrame:
-    """Lee un archivo Parquet y produce un error claro si no existe."""
+    """Read a Parquet file and raise a clear error if it does not exist."""
     if not path.exists():
         raise FileNotFoundError(f"Parquet no encontrado: {path}")
     return pd.read_parquet(path)
@@ -119,11 +119,11 @@ def _read_parquet(path: Path) -> pd.DataFrame:
 
 def _load_clan_members(processed_dir: Path) -> pd.DataFrame:
     """
-    Carga clan_members.parquet y conserva únicamente player_tag y clan_tag.
+    Load clan_members.parquet and retain only player_tag and clan_tag.
 
-    Deduplica por la pareja (clan_tag, player_tag), no por player_tag.
-    Un jugador puede aparecer en varios clanes; todas las relaciones válidas
-    deben mantenerse.
+    Deduplicate by the (clan_tag, player_tag) pair, not by player_tag.
+    A player can appear in multiple clans; all valid relationships must be
+    retained.
     """
     members = _read_parquet(processed_dir / "clan_members.parquet")
     required = {"player_tag", "clan_tag"}
@@ -134,12 +134,12 @@ def _load_clan_members(processed_dir: Path) -> pd.DataFrame:
 
     members = members[["player_tag", "clan_tag"]].copy()
 
-    # Eliminar únicamente duplicados exactos de la relación clan-jugador.
+    # Remove only exact duplicates of the clan-player relationship.
     members = members.drop_duplicates(
         subset=["clan_tag", "player_tag"], keep="first"
     )
 
-    # Validación defensiva: no puede haber más de una fila por (clan_tag, player_tag)
+    # Defensive validation: there can be no more than one row per (clan_tag, player_tag)
     if members.duplicated(subset=["clan_tag", "player_tag"]).any():
         raise ValueError(
             "clan_members.parquet contiene relaciones duplicadas "
@@ -151,10 +151,10 @@ def _load_clan_members(processed_dir: Path) -> pd.DataFrame:
 
 def _load_player_features(features_dir: Path) -> pd.DataFrame:
     """
-    Carga el player_features.parquet precalculado.
+    Load the precomputed player_features.parquet.
 
-    No se vuelven a procesar las tablas grandes de tropas, héroes, hechizos,
-    equipamiento o logros.
+    Do not process the large tables of troops, heroes, spells, equipment, or
+    achievements again.
     """
     path = features_dir / "player_features.parquet"
     if not path.exists():
@@ -167,7 +167,7 @@ def _load_player_features(features_dir: Path) -> pd.DataFrame:
     if "player_tag" not in pf.columns:
         raise ValueError("player_features.parquet no contiene player_tag")
 
-    # Comprobación obligatoria: un único registro por player_tag.
+    # Required check: a single record per player_tag.
     if not pf["player_tag"].is_unique:
         raise ValueError(
             "player_features.parquet contiene player_tag duplicados. "
@@ -179,14 +179,13 @@ def _load_player_features(features_dir: Path) -> pd.DataFrame:
 
 def _aggregate_clan_player_features(members_features: pd.DataFrame) -> pd.DataFrame:
     """
-    Agrega las features a nivel jugador a nivel clan.
+    Aggregate player-level features at the clan level.
 
-    Devuelve un DataFrame con una fila por clan_tag.
+    Return a DataFrame with one row per clan_tag.
 
-    IMPORTANTE:
-    No se agregan estadísticas bélicas históricas del jugador, como
-    war_stars. Se describe únicamente la composición / progresión / economía
-    interna del clan.
+    IMPORTANT:
+    Historical player war statistics, such as war_stars, are not aggregated.
+    Only the clan's internal composition / progression / economy is described.
     """
     if members_features.empty:
         return pd.DataFrame()
@@ -203,7 +202,7 @@ def _aggregate_clan_player_features(members_features: pd.DataFrame) -> pd.DataFr
             agg_specs[f"std_{prefix}"] = (col, "std")
 
     # --------------------------------------------------------------
-    # Agregaciones básicas de columnas numéricas
+    # Basic numeric-column aggregations
     # --------------------------------------------------------------
     add_mean_median_std("town_hall_level", "town_hall_level")
     add_mean_median_std("exp_level", "exp_level")
@@ -215,7 +214,7 @@ def _aggregate_clan_player_features(members_features: pd.DataFrame) -> pd.DataFr
     )
 
     # --------------------------------------------------------------
-    # Promedios de features de progresión ya calculadas a nivel jugador
+    # Means of progression features already calculated at the player level
     # --------------------------------------------------------------
     progression_mean_cols = [
         "troop_mean_level",
@@ -235,7 +234,7 @@ def _aggregate_clan_player_features(members_features: pd.DataFrame) -> pd.DataFr
     result = grouped.agg(**agg_specs)
 
     # --------------------------------------------------------------
-    # Porcentajes de TH altos
+    # Percentages of high TH levels
     # --------------------------------------------------------------
     if "town_hall_level" in df.columns:
         th_extra = grouped.agg(
@@ -247,7 +246,7 @@ def _aggregate_clan_player_features(members_features: pd.DataFrame) -> pd.DataFr
         )
 
     # --------------------------------------------------------------
-    # Sumas necesarias para ratios y balances
+    # Sums required for ratios and balances
     # --------------------------------------------------------------
     sum_specs: dict = {"member_count": ("player_tag", "size")}
     if "donations" in df.columns:
@@ -262,12 +261,12 @@ def _aggregate_clan_player_features(members_features: pd.DataFrame) -> pd.DataFr
 
     sums = grouped.agg(**sum_specs)
 
-    # Merge de las sumas (incluye member_count) para que formen parte
-    # del contrato final de features agregadas.
+    # Merge sums (including member_count) so they form part of the final
+    # aggregated-feature contract.
     result = result.merge(sums, left_index=True, right_index=True, how="left")
 
     # --------------------------------------------------------------
-    # Ratios y balances adicionales
+    # Additional ratios and balances
     # --------------------------------------------------------------
     extra = pd.DataFrame(index=sums.index)
 
@@ -293,15 +292,15 @@ def _aggregate_clan_player_features(members_features: pd.DataFrame) -> pd.DataFr
 
 def _fill_missing_values(df: pd.DataFrame) -> pd.DataFrame:
     """
-    Política de missing:
-    - numéricos → 0
-    - booleanos → False
-    - categóricos/object → "unknown"
+    Missing-value policy:
+    - numeric → 0
+    - boolean → False
+    - categorical/object → "unknown"
 
-    Se excluye ``clan_tag`` para no imputar el identificador.
+    Exclude ``clan_tag`` to avoid imputing the identifier.
     """
     def _is_boolean_series(series: pd.Series) -> bool:
-        """Detecta series booleanas, incluidas las de dtype object con True/False/None."""
+        """Detect boolean series, including object-dtype series with True/False/None."""
         if pd.api.types.is_bool_dtype(series):
             return True
         non_null = series.dropna()
@@ -328,15 +327,15 @@ def build_war_performance_dataset(
     min_war_total: int = MIN_WAR_HISTORY_DEFAULT,
 ) -> pd.DataFrame:
     """
-    Construye el dataset del Problema 3.
+    Build the Problem 3 dataset.
 
-    - 1 fila = 1 clan.
+    - 1 row = 1 clan.
     - Target: war_success_rate = war_wins / (war_wins + war_losses + war_ties).
-    - Solo clanes con historial bélico total >= ``min_war_total``.
-    - Se excluyen features de guerra acumulada y derivadas directas.
-    - Se reutiliza player_features.parquet, sin recorrer las tablas gigantes.
-    - No se incluye rendimiento bélico histórico del jugador (por ejemplo,
-      war_stars) en las features de composición.
+    - Only clans with total war history >= ``min_war_total``.
+    - Cumulative war features and direct derivatives are excluded.
+    - player_features.parquet is reused without iterating over large tables.
+    - Historical player war performance (for example, war_stars) is not included
+      in composition features.
     """
     clans = _read_parquet(processed_dir / "clans.parquet")
 
@@ -355,20 +354,20 @@ def build_war_performance_dataset(
     )
 
     # ------------------------------------------------------------------
-    # Opcional: inspeccionar distribución para justificar min_war_total.
-    # Descomentar para ver el resumen antes de fijar el umbral.
+    # Optional: inspect distribution to justify min_war_total.
+    # Uncomment to view the summary before setting the threshold.
     # _analyze_war_total_distribution(clans)
     # ------------------------------------------------------------------
 
     # ------------------------------------------------------------------
-    # Filtrar clanes con historial insuficiente
+    # Filter clans with insufficient history
     # ------------------------------------------------------------------
     valid_clans = clans[clans["war_total"] >= min_war_total].copy()
     if valid_clans.empty:
         return pd.DataFrame(columns=["clan_tag", "war_success_rate"])
 
     # ------------------------------------------------------------------
-    # Calcular target
+    # Calculate target
     # ------------------------------------------------------------------
     valid_clans["war_success_rate"] = (
         valid_clans["war_wins"].astype(float)
@@ -377,7 +376,7 @@ def build_war_performance_dataset(
     valid_clans = valid_clans[valid_clans["war_success_rate"].notna()].copy()
 
     # ------------------------------------------------------------------
-    # Separar target y features estructurales usando whitelist
+    # Separate target and structural features using the whitelist
     # ------------------------------------------------------------------
     target = valid_clans[["clan_tag", "war_success_rate"]].copy()
 
@@ -387,7 +386,7 @@ def build_war_performance_dataset(
     clan_features = valid_clans[["clan_tag"] + available_clan_cols].copy()
 
     # ------------------------------------------------------------------
-    # Unir composición del clan
+    # Join clan composition
     # ------------------------------------------------------------------
     members = _load_clan_members(processed_dir)
     player_features = _load_player_features(features_dir)
@@ -399,20 +398,20 @@ def build_war_performance_dataset(
         clan_composition, left_on="clan_tag", right_index=True, how="left"
     )
 
-    # Unir el target
+    # Join the target
     result = result.merge(target, on="clan_tag", how="left")
 
-    # Garantizar una fila por clan
+    # Ensure one row per clan
     result = result.drop_duplicates(subset="clan_tag", keep="first")
 
-    # Aplicar política de missing
+    # Apply missing-value policy
     result = _fill_missing_values(result)
 
     return result.reset_index(drop=True)
 
 
 def main() -> None:
-    """Genera el dataset final. Usar con precaución; revisar umbral antes."""
+    """Generate the final dataset. Use with caution; review the threshold first."""
     processed_dir = PROCESSED_DIR_DEFAULT
     features_dir = FEATURES_DIR_DEFAULT
     datasets_dir = DATASETS_DIR_DEFAULT
