@@ -305,27 +305,110 @@ def _get_test_indices(
 # PREDICTION LABEL NORMALIZATION
 # =============================================================================
 #
-# RandomForestClassifier and MLPClassifier both accept string y directly
-# and predict strings back (confirmed empirically). XGBClassifier does
-# NOT accept string y -- it raises ValueError: "Invalid classes inferred
-# from unique values of y" (confirmed empirically against this exact
-# CLASS_ORDER) -- so a working P4 XGBoost run necessarily used an integer
-# encoding of performance_class, and will predict integers back.
+# RandomForestClassifier was fit on the raw string labels directly and
+# predicts strings back -- confirmed empirically, and it never touches
+# the numeric-decoding branch below at all, so nothing here can affect it.
 #
-# ASSUMPTION THAT NEEDS YOUR CONFIRMATION: the mapping below assumes the
-# encoding matches CLASS_ORDER's position (low=0, medium=1, high=2) --
-# the natural ordinal reading, and the same convention results_p1.py uses
-# for its own CLASS_ORDER-indexed labels. If you encoded it differently
-# when training (e.g. alphabetically via a bare LabelEncoder, which would
-# give high=0, low=1, medium=2), change CLASS_ORDER's order to match, or
-# this will silently mislabel every XGBoost prediction -- it won't crash,
-# it'll just be wrong.
-# =============================================================================
+# XGBClassifier does NOT accept string y -- it raises ValueError:
+# "Invalid classes inferred from unique values of y" (confirmed
+# empirically). MLP was ALSO fit on LabelEncoder-encoded integers in this
+# project's actual training pipeline (confirmed against this project's
+# own MLflow metrics: XGBoost/MLP's training-time accuracy only matches
+# results_p4.py's output once decoded with the mapping below, not the
+# CLASS_ORDER-indexed one this file used previously). Both predict
+# integers back, and BOTH need decoding through the SAME mapping a bare
+# sklearn LabelEncoder actually produces.
+#
+# LabelEncoder.fit() sorts unique classes LEXICOGRAPHICALLY before
+# assigning 0, 1, 2, ... -- confirmed directly:
+#   LabelEncoder().fit(["high","low","medium"]).classes_
+#   -> array(['high', 'low', 'medium'])   # alphabetical, i.e. high=0, low=1, medium=2
+#
+# This is DELIBERATELY kept separate from CLASS_ORDER, which stays
+# ["low", "medium", "high"] everywhere else in this file (confusion
+# matrix axes, plots, CSV/JSON column order) -- only the numeric decode
+# step below needs the alphabetical mapping, because that's what the
+# encoder actually produced, not a display preference to match.
+LABEL_ENCODER_CLASS_ORDER = sorted(CLASS_ORDER)
+
+
+def _find_label_encoder_classes(run_id: str) -> Optional[List[str]]:
+    """
+    Best-effort recovery of the true class order from the run itself,
+    tried BEFORE falling back to LABEL_ENCODER_CLASS_ORDER below: once a
+    model is fit on bare integers, the fitted object itself retains no
+    trace of the original strings at all (confirmed empirically --
+    XGBClassifier/MLPClassifier.classes_ shows [0, 1, 2], nothing else on
+    the object references them either), so this can only ever come from
+    something logged separately alongside the run -- a param recording
+    the mapping, or a saved LabelEncoder/classes artifact. If nothing
+    like that is logged, returns None, which is the expected outcome
+    here: LABEL_ENCODER_CLASS_ORDER is the actual, correct mapping for
+    this project's models, not a guess to be replaced once something
+    better is found.
+    """
+
+    client = MlflowClient()
+
+    try:
+        run = client.get_run(run_id)
+    except Exception:
+        return None
+
+    param_candidates = (
+        "label_encoder_classes", "le_classes", "class_order",
+        "classes_", "label_classes", "encoder_classes",
+    )
+
+    for key, value in run.data.params.items():
+        if key.lower() in param_candidates:
+            try:
+                parsed = json.loads(value.replace("'", '"'))
+                if isinstance(parsed, list) and set(parsed) == set(CLASS_ORDER):
+                    print(f"    Recovered class order from run param '{key}': {parsed}")
+                    return parsed
+            except Exception:
+                pass
+
+    try:
+        artifacts = client.list_artifacts(run_id)
+    except Exception:
+        artifacts = []
+
+    artifact_name_hints = ("label_encoder", "labelencoder", "classes")
+
+    for artifact in artifacts:
+        name_lower = artifact.path.lower()
+        if any(hint in name_lower for hint in artifact_name_hints):
+            try:
+                local_path = mlflow.artifacts.download_artifacts(
+                    run_id=run_id, artifact_path=artifact.path
+                )
+                if local_path.endswith((".pkl", ".pickle")):
+                    with open(local_path, "rb") as f:
+                        obj = pickle.load(f)
+                    classes = list(getattr(obj, "classes_", obj))
+                elif local_path.endswith(".json"):
+                    with open(local_path) as f:
+                        classes = json.load(f)
+                else:
+                    continue
+                if set(classes) == set(CLASS_ORDER):
+                    print(f"    Recovered class order from artifact '{artifact.path}': {classes}")
+                    return list(classes)
+            except Exception:
+                pass
+
+    return None
+
 
 def _normalize_predictions(
     y_pred: Any,
     model_name: str = "",
+    numeric_class_order: Optional[List[str]] = None,
 ) -> np.ndarray:
+
+    class_order_for_numeric = numeric_class_order or LABEL_ENCODER_CLASS_ORDER
 
     y_pred = np.asarray(y_pred).ravel()
 
@@ -344,8 +427,8 @@ def _normalize_predictions(
 
             try:
                 numeric_value = int(value)
-                if 0 <= numeric_value < len(CLASS_ORDER):
-                    normalized.append(CLASS_ORDER[numeric_value])
+                if 0 <= numeric_value < len(class_order_for_numeric):
+                    normalized.append(class_order_for_numeric[numeric_value])
                     continue
             except (ValueError, TypeError):
                 pass
@@ -353,7 +436,7 @@ def _normalize_predictions(
             raise ValueError(
                 f"Unknown prediction label from {model_name!r}: "
                 f"{value!r}. Expected one of {CLASS_ORDER} or "
-                f"numeric labels 0-{len(CLASS_ORDER) - 1}."
+                f"numeric labels 0-{len(class_order_for_numeric) - 1}."
             )
 
         return np.asarray(normalized, dtype=str)
@@ -364,7 +447,7 @@ def _normalize_predictions(
 
         invalid = (
             (numeric_predictions < 0)
-            | (numeric_predictions >= len(CLASS_ORDER))
+            | (numeric_predictions >= len(class_order_for_numeric))
         )
 
         if invalid.any():
@@ -372,11 +455,11 @@ def _normalize_predictions(
                 f"Unknown numeric prediction labels from "
                 f"{model_name!r}: "
                 f"{np.unique(numeric_predictions[invalid]).tolist()}. "
-                f"Expected labels 0-{len(CLASS_ORDER) - 1}."
+                f"Expected labels 0-{len(class_order_for_numeric) - 1}."
             )
 
         return np.asarray(
-            [CLASS_ORDER[int(value)] for value in numeric_predictions],
+            [class_order_for_numeric[int(value)] for value in numeric_predictions],
             dtype=str,
         )
 
@@ -945,14 +1028,6 @@ def _extract_metrics(
     if y_proba is not None and proba_classes is not None:
 
         try:
-            # roc_auc_score(multi_class="ovr") and log_loss both require
-            # `labels` in lexicographic order specifically (confirmed
-            # empirically -- roc_auc_score raises "Parameter 'labels'
-            # must be ordered" otherwise; log_loss silently assumes it
-            # even when it doesn't raise). CLASS_ORDER itself stays
-            # ["low","medium","high"] everywhere else in this file --
-            # only these two sklearn calls need the alphabetical variant,
-            # so it's built here rather than changing CLASS_ORDER itself.
             sorted_classes = sorted(CLASS_ORDER)
 
             column_for_class = {
@@ -1249,6 +1324,7 @@ def _evaluate_model(
     model_name: str,
     X_test: pd.DataFrame,
     y_test: np.ndarray,
+    numeric_class_order: Optional[List[str]] = None,
 ) -> Tuple[Dict[str, float], np.ndarray]:
 
     print(f"\nEvaluating {model_name}...")
@@ -1267,6 +1343,7 @@ def _evaluate_model(
     y_pred = _normalize_predictions(
         y_pred_raw,
         model_name=model_name,
+        numeric_class_order=numeric_class_order,
     )
 
     y_true = np.asarray(y_test).ravel().astype(str)
@@ -1290,6 +1367,7 @@ def _evaluate_model(
                     _normalize_predictions(
                         np.asarray(raw_classes),
                         model_name=f"{model_name} classes_",
+                        numeric_class_order=numeric_class_order,
                     )
                 )
 
@@ -1414,6 +1492,13 @@ def main() -> None:
 
     feature_importance_records: Dict[str, pd.Series] = {}
 
+    # Models that were fit on LabelEncoder-encoded integers, per this
+    # project's actual training pipeline (confirmed -- see
+    # LABEL_ENCODER_CLASS_ORDER's docstring above). random_forest is
+    # deliberately absent: it predicts strings natively and never uses
+    # numeric_class_order at all.
+    LABEL_ENCODED_MODELS = {"xgboost", "mlp"}
+
     for model_key, run_id in MODEL_RUN_IDS.items():
 
         if run_id is None:
@@ -1455,6 +1540,21 @@ def main() -> None:
         if importance is not None:
             feature_importance_records[model_key] = importance
 
+        numeric_class_order = None
+
+        if model_key in LABEL_ENCODED_MODELS:
+
+            numeric_class_order = _find_label_encoder_classes(run_id)
+
+            if numeric_class_order is None:
+                numeric_class_order = LABEL_ENCODER_CLASS_ORDER
+                print(
+                    f"    No logged label-encoder mapping found for "
+                    f"{model_key} -- using the confirmed training-time "
+                    f"mapping LABEL_ENCODER_CLASS_ORDER = "
+                    f"{LABEL_ENCODER_CLASS_ORDER}"
+                )
+
         try:
             metrics, y_pred = _evaluate_model(
                 model_key=model_key,
@@ -1462,6 +1562,7 @@ def main() -> None:
                 model_name=model_key,
                 X_test=X_test,
                 y_test=y_test,
+                numeric_class_order=numeric_class_order,
             )
 
         except Exception as exc:
