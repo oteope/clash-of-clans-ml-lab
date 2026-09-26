@@ -2,68 +2,43 @@
 
 A machine learning laboratory and end-to-end ML pipeline built around real data from the Clash of Clans Developer API.
 
-The project explores multiple supervised and unsupervised machine learning problems using large-scale Clash of Clans data, while applying the complete workflow of a real ML project: data extraction, exploratory data analysis, preprocessing, feature engineering, model training, hyperparameter optimization, evaluation, experiment tracking and result analysis.
-
----
+The project applies multiple supervised and unsupervised machine learning techniques to large-scale Clash of Clans data, following the complete workflow of a real ML project: data extraction, exploratory data analysis, preprocessing, feature engineering, model training, hyperparameter optimization, evaluation, experiment tracking, and result analysis.
 
 ## 📌 Overview
 
-### What is this project?
+### What Is This Project?
 
-**Clash of Clans ML Lab** is a machine learning project built using data obtained from the official Clash of Clans Developer API.
+**Clash of Clans ML Lab** is a machine learning project built on data from the official Clash of Clans Developer API. Rather than focusing on a single prediction problem, it's structured as an **ML laboratory**: five different problems, derived from the same domain, each explored with its own models and evaluation.
 
-Rather than focusing on a single prediction problem, the project is structured as an **ML laboratory**, where different machine learning approaches are applied to several problems derived from the same domain.
+| # | Problem | Type |
+|---|---|---|
+| P1 | Clan Member Role Classification | Classification |
+| P2 | Clan Rank Regression | Regression |
+| P3 | Clan War Performance Regression | Regression |
+| P4 | Clan Performance Classification | Classification |
+| P5 | Player Clustering | Unsupervised (clustering) |
 
-The project includes:
-
-- **4 supervised learning problems**
-  - Classification
-  - Regression
-- **1 unsupervised learning problem**
-  - Player clustering
-- Exploratory Data Analysis (EDA)
-- Data preprocessing and feature engineering
-- Multiple machine learning algorithms
-- Hyperparameter optimization
-- Model comparison and evaluation
-- Experiment tracking with MLflow
-- Analysis and visualization of results
-
-The goal is not simply to train models, but to understand and implement the complete process required to turn raw data into reproducible machine learning experiments.
+Around these five problems, the project also includes exploratory data analysis, data preprocessing and feature engineering, multiple algorithms per problem, hyperparameter optimization (manual tuning, randomized search, and Optuna), model comparison, experiment tracking with MLflow, and result visualization. The goal isn't just to train models — it's to implement the complete process of turning raw data into reproducible machine learning experiments.
 
 ### Motivation
 
-Before starting this project, I had already spent time studying the mathematical foundations behind many machine learning algorithms.
+Before this project, I had already spent time on the mathematical foundations behind algorithms like regression, classification, and clustering — I could follow what was happening in theory. What I hadn't done was close the gap between that theory and actually implementing a machine learning project in code, without relying on AI to write it for me.
 
-I could understand, at least at a theoretical level, what was happening inside algorithms such as regression, classification and clustering. However, there was an important gap between understanding the mathematics and actually implementing a machine learning model from scratch in code without relying on AI to write it for me.
+Rather than continue with small datasets and isolated exercises, I wanted a more serious project on larger, real-world data, and to genuinely understand:
 
-This project was created to close that gap.
+- How data becomes usable features.
+- How ML datasets are constructed.
+- How models are implemented and trained.
+- How different algorithms behave on the same problem.
+- How hyperparameters affect performance.
+- How to evaluate and interpret models.
+- How to structure a reproducible ML project.
 
-Instead of continuing with small datasets and isolated exercises, I wanted to build a more serious project using larger real-world datasets, while forcing myself to understand the implementation side of machine learning:
+I also wanted to go beyond the models themselves and start introducing **MLOps practices** — which is why **MLflow** was integrated from early on, to track experiments, parameters, metrics, models, and artifacts.
 
-- How data is transformed into usable features
-- How machine learning datasets are constructed
-- How models are implemented and trained
-- How different algorithms behave on the same problem
-- How hyperparameters affect performance
-- How to evaluate and interpret models
-- How to structure a reproducible ML project
+### Project Approach
 
-At the same time, I wanted to go beyond the machine learning models themselves and start introducing **MLOps practices** into the project.
-
-For that reason, **MLflow** was integrated to track experiments, parameters, metrics, models and artifacts.
-
-### Project approach
-
-The project combines two perspectives:
-
-**ML Laboratory**
-
-Each problem is treated as an independent experiment. Different algorithms, preprocessing strategies, hyperparameters and evaluation methods are tested and compared.
-
-**End-to-End ML Pipeline**
-
-At the same time, the project follows a complete machine learning workflow:
+The project combines two perspectives. As an **ML Laboratory**, each problem is an independent experiment: different algorithms, preprocessing strategies, hyperparameters, and evaluation methods are tested and compared. As an **End-to-End ML Pipeline**, it also follows a complete workflow from raw data to tracked results:
 
 ```text
 Clash of Clans API
@@ -89,44 +64,16 @@ Evaluation & Analysis
 MLflow Experiment Tracking
         ↓
 Results & Artifacts
+```
+
 
 ## 🏗️ Project Architecture
 
-The project is organized around a common source of raw data and five independent machine learning pipelines.
-
-All problems start from the same raw Clash of Clans data obtained through the Developer API. From these JSON files, each problem has its own dataset construction process, including the feature engineering required for that specific task.
-
-This means that the project does not rely on a single shared feature engineering pipeline. Instead, each problem defines its own set of features and dataset according to the information required by its machine learning objective.
-
-### Overall Pipeline
-
-The general architecture can be summarized as:
-
-```text
-Clash of Clans Developer API
-            ↓
-        Raw JSON Data
-            ↓
-   Problem-Specific Dataset
-            ↓
-     Feature Engineering
-            ↓
-      Model Training
-            ↓
- Hyperparameter Optimization
-            ↓
-    Evaluation & Analysis
-            ↓
-      MLflow Tracking
-```
-
-The same raw data is used as the foundation for all five problems, but each pipeline transforms it differently depending on the problem being solved.
+The project is organized around one shared source of raw data and five independent machine learning pipelines. All five problems start from the same raw Clash of Clans JSON data, but each defines its own dataset, feature engineering, and target — there is no single shared feature pipeline.
 
 ### Problem-Specific Pipelines
 
-Each problem is implemented independently under its own section of the `models` directory.
-
-A typical problem follows this structure:
+Each problem lives under its own section of the `models` directory and follows the same general shape:
 
 ```text
 Raw JSON Data
@@ -135,9 +82,9 @@ Build Dataset
       ↓
 ┌───────────────────────────┐
 │ Problem-Specific Features │
-│                           │
-│ • Clan Features           │
-│ • Player Features         │
+│                            │
+│ • Clan Features            │
+│ • Player Features          │
 └───────────────────────────┘
       ↓
 Problem Dataset
@@ -147,85 +94,31 @@ Model Training & Evaluation
 MLflow
 ```
 
-The feature engineering is divided into **clan-level and player-level features** when both types of information are relevant to the problem. Problems that only require clan-level information use the corresponding clan features without introducing unnecessary player-level features.
-
-This approach allows each problem to have a dataset specifically designed around its target and available information.
+Feature engineering is split into **clan-level** and **player-level** features where both are relevant; problems that only need clan-level information skip player-level features entirely, keeping each dataset focused on what its target actually needs.
 
 ### Independent ML Pipelines
 
-The five problems are intentionally separated rather than being implemented as variations of the same pipeline.
-
-Each problem has its own:
-
-- Dataset construction
-- Feature engineering
-- Dataset
-- Model implementations
-- Training scripts
-- Evaluation process
-- Results and artifacts
-
-This makes it possible to experiment with different approaches independently while keeping the problems reproducible and isolated from one another.
+The five problems are deliberately kept separate rather than built as variations of one shared pipeline. Each has its own dataset construction, feature engineering, dataset, model implementations, training scripts, evaluation process, and results/artifacts — making it possible to experiment with each independently while keeping all five reproducible and isolated from one another.
 
 ### Experiment Tracking
 
-**MLflow** is integrated into the project as the experiment tracking layer.
-
-During model development, MLflow is used to record:
-
-- Experiment runs
-- Model information
-- Artifacts
-- Parameters and metrics associated with experiments
-
-As the project evolved and more advanced hyperparameter optimization techniques were introduced, such as randomized search and Optuna, MLflow continued to be used to track the relevant experiments and resulting models.
-
-This provides a consistent tracking system across the different machine learning problems.
+**MLflow** is the experiment-tracking layer across all five pipelines, recording runs, models, artifacts, parameters, and metrics consistently — including for later additions like randomized search and Optuna. See *Machine Learning Engineering*, below, for details.
 
 ## 📊 Dataset
 
-The dataset used in this project was built from data collected through the **Clash of Clans Developer API**.
-
-The collection process was designed with a focus on obtaining a sufficiently large and diverse population of clans and players rather than repeatedly querying the same high-ranking clans.
-
 ### Data Collection
 
-The crawler first discovers **clans** through the Clash of Clans API and then collects the associated clan members and player profiles.
+The crawler discovers **clans** through the Clash of Clans API, then collects their members and player profiles. Rather than relying on the top clans the API returns by default, it uses a **diversified search strategy** across three filter dimensions:
 
-Instead of relying exclusively on the top clans returned by the API, the crawler uses a **diversified search strategy** based on different combinations of clan filters.
+| Dimension | Ranges | Count |
+|---|---|---:|
+| Members | 2–10, 11–20, 21–30, 31–40, 41–50 | 5 |
+| Clan level | 2–5, 6–10, 11–15, 16–20 | 4 |
+| Clan points | 1–1,000 · 1,001–3,000 · 3,001–5,000 · 5,001–10,000 · 10,001–40,000 · 40,001–999,999 | 6 |
 
-The current search space is defined across three dimensions:
+Combining these produces **15 single-dimension** and **74 two-dimension** search configurations — **89 in total**. Three-dimensional combinations are not currently used.
 
-- **Members:** 5 ranges
-  - 2–10
-  - 11–20
-  - 21–30
-  - 31–40
-  - 41–50
-- **Clan level:** 4 ranges
-  - 2–5
-  - 6–10
-  - 11–15
-  - 16–20
-- **Clan points:** 6 ranges
-  - 1–1,000
-  - 1,001–3,000
-  - 3,001–5,000
-  - 5,001–10,000
-  - 10,001–40,000
-  - 40,001–999,999
-
-The crawler currently generates:
-
-- **15** single-dimension configurations
-- **74** two-dimension configurations
-- **89 configurations in total**
-
-Three-dimensional combinations are not currently used.
-
-The crawler also maintains a history of previously used configurations. This allows different executions to progressively explore different areas of the search space instead of repeatedly querying the same configurations.
-
-The resulting process is therefore an **incremental exploration strategy**:
+The crawler keeps a history of previously used configurations so that successive runs explore new areas of the search space instead of repeating the same queries:
 
 ```text
 Generate Search Configurations
@@ -241,13 +134,11 @@ Store Retrieved Data
 Register Configuration as Used
 ```
 
-The purpose of this approach is not primarily to make the crawler faster. The main bottleneck is the API itself, so the objective is to make each execution more useful by increasing the probability of discovering **new clans and players**.
+The main bottleneck is the API itself, so the goal of this strategy isn't raw crawl speed — it's maximizing the odds that each run surfaces **new clans and players**.
 
 ### Raw Data
 
-The crawler stores the collected information as raw JSON files.
-
-The project uses three types of raw entities:
+The crawler stores collected data as raw JSON files across three entity types:
 
 ```text
 data/raw/
@@ -256,19 +147,13 @@ data/raw/
 └── players/
 ```
 
-The crawler is responsible for **data acquisition and storage**, not machine learning preprocessing or feature engineering.
+The crawler is responsible for **data acquisition and storage only** — not preprocessing or feature engineering.
 
-Players are stored as unique entities. Once a player's profile has been downloaded and stored, it is not repeatedly queried to create historical snapshots.
-
-Therefore, the resulting dataset represents the player's state at the time of their first extraction. Dataset diversity is obtained primarily by discovering additional clans and players rather than repeatedly collecting the same player's profile over time.
+Players are stored as unique entities: once a profile is downloaded, it isn't re-queried to build historical snapshots. The dataset therefore represents each player's state at the time of their first extraction, and diversity comes primarily from discovering new clans and players rather than resampling existing ones over time.
 
 ### Dataset Construction
 
-The raw JSON data is transformed into **problem-specific Parquet datasets** using Python scripts.
-
-Each machine learning problem has its own dataset construction process. The construction step performs the feature engineering required for that particular problem and produces the final dataset consumed by its corresponding ML pipeline.
-
-Conceptually:
+Python scripts transform the raw JSON into **problem-specific Parquet datasets**. Each of the five problems has its own dataset builder, performing the feature engineering that problem needs and drawing on clan data, player data, or both, depending on the target:
 
 ```text
 Raw JSON Data
@@ -282,25 +167,9 @@ Problem-Specific Parquet Dataset
 ML Pipeline
 ```
 
-Each problem therefore has its own:
-
-- Dataset builder
-- Feature engineering
-- Selected features
-- Target
-- Final Parquet dataset
-
-Depending on the problem, the feature engineering can use information from:
-
-- **Clans**
-- **Players**
-- Or both
-
-This allows each dataset to be specifically designed around the machine learning objective rather than forcing all problems to use the same feature representation.
+This keeps each dataset purpose-built for its own machine learning objective rather than forcing every problem into a single shared feature representation.
 
 ### Final Datasets
-
-The resulting Parquet datasets are the datasets directly consumed by the five machine learning pipelines:
 
 ```text
 data/datasets/
@@ -311,159 +180,39 @@ data/datasets/
 └── P5 dataset
 ```
 
-All five datasets originate from the same underlying raw data, but differ in their feature engineering, selected variables and target depending on the problem they are designed to solve.
-
-The largest dataset is the player clustering dataset, containing approximately **836,000 players**.
-
-The detailed characteristics, distributions and feature engineering of each dataset are analyzed later in the **Exploratory Data Analysis** section.
+All five datasets originate from the same raw data but differ in feature engineering, selected variables, and target. The largest is the player-clustering dataset (P5), with approximately **836,000 players**. Detailed characteristics and distributions for each dataset are covered in *Machine Learning Problems*, below.
 
 ## 🔎 Exploratory Data Analysis
 
-Exploratory Data Analysis was performed **independently for each machine learning problem** after constructing the corresponding problem-specific datasets.
+EDA was performed independently for each of the five problems, after their datasets were built. Its purpose wasn't only to visualize the data, but to understand feature and target distributions, validate dataset quality, and support feature-engineering decisions. For each problem, the analysis covered:
 
-The purpose of the EDA was not only to visualize the data, but also to understand the distributions and relationships between variables, validate the quality of the processed datasets, and support the decisions made during feature engineering.
-
-The analysis included:
-
-- Feature distributions
-- Target distributions
-- Missing values
-- Potential outliers and extreme values
-- Pearson correlation
-- Spearman correlation
+- Feature and target distributions
+- Missing values and potential outliers
+- Pearson and Spearman correlation
 - Relationships between features and targets
-- Problem-specific feature analysis
+- Problem-specific analyses (e.g. the trophies proxy audit in P2 — see below)
 
-Because the data preprocessing and dataset construction were performed before the EDA, the final datasets were already in a clean and usable state. As a result, the EDA did not require major corrective preprocessing, but instead served primarily to **understand the resulting data and validate the decisions made during dataset construction**.
+Because preprocessing and dataset construction happened before EDA, the datasets were already clean by this stage; EDA mainly served to understand the resulting data rather than to correct it. Problem-specific results and figures are presented together with each problem in *Machine Learning Problems*; this section covers the methodology that was common across all five.
 
 ### Correlation Analysis
 
-Both **Pearson** and **Spearman** correlations were used to analyze relationships between variables.
-
-This distinction was particularly useful because a high correlation does not automatically mean that a feature should be removed.
-
-In the context of Clash of Clans, many variables are naturally correlated because the game is based heavily on player progression.
-
-For example, a player's **Town Hall level** is naturally related to characteristics such as troop levels, spell levels and other progression-related variables.
-
-Therefore, removing a feature simply because it has a high correlation with another variable could remove meaningful information from the dataset.
-
-The correlation analysis was consequently used as a tool for **understanding the data and identifying potentially problematic relationships**, rather than as an automatic feature-removal mechanism.
+Both **Pearson** and **Spearman** correlation were used to study relationships between variables. This distinction mattered because a high correlation doesn't automatically justify removing a feature — many Clash of Clans variables are naturally correlated, since the game is built around player progression. A player's **Town Hall level**, for instance, is naturally related to troop levels, spell levels, and other progression variables. Removing a feature purely because it correlates strongly with another risks discarding meaningful information. Correlation analysis was therefore used to **understand the data and flag potentially problematic relationships**, not as an automatic feature-removal rule.
 
 ### Target and Feature Distributions
 
-The distributions of the features and targets were analyzed separately for each problem.
-
-This allowed the datasets to be inspected in the context of their specific machine learning objective and helped identify:
-
-- Highly concentrated variables
-- Skewed distributions
-- Extreme values
-- Class distributions
-- Strong relationships between variables
-- Potentially redundant or proxy features
-
-The resulting visualizations are used throughout the individual problem analyses to explain the reasoning behind the final feature sets and modelling decisions.
-
----
-
-### P2 — Feature and Target Analysis
-
-The Exploratory Data Analysis was particularly important for **Problem 2**, where the objective is to predict `clan_rank`.
-
-One of the most relevant findings was the strong predictive relationship between **`trophies`** and `clan_rank`.
-
-Rather than automatically removing `trophies`, the feature was investigated further to determine whether it represented data leakage or legitimate predictive information.
-
-#### Proxy and Leakage Audit
-
-Before finalizing the P2 dataset, a dedicated audit was performed to identify variables that could potentially act as **proxies for `clan_rank`**.
-
-The analysis considered variables including:
-
-- `trophies`
-- `town_hall_level`
-- `exp_level`
-- `war_stars`
-- `attack_wins`
-- `defense_wins`
-- `donations`
-- `donations_received`
-- `capital_contributions`
-- `builder_base_trophies`
-
-The relationship between each variable and `clan_rank` was analyzed within individual clans using **Spearman correlation**.
-
-The analysis summarized:
-
-- Median correlation
-- 90th percentile of absolute correlation
-- Percentage of clans with an absolute correlation greater than `0.9`
-
-The purpose was not to automatically remove highly correlated variables. Instead, the audit was used to identify variables that could potentially act as **target proxies** and require further investigation.
-
-For `trophies`, the audit produced:
-
-- Median Spearman correlation: **−0.3963**
-- P90 of `|corr|`: **1.0**
-- Clans with `|corr| > 0.9`: **17.28%**
-
-These results showed that `trophies` had a strong association with `clan_rank` for a relevant proportion of clans, making it a potential proxy worth investigating.
-
-However, a strong correlation alone was not considered sufficient evidence of data leakage.
-
-#### Trophies: With vs. Without
-
-To measure the actual predictive contribution of `trophies`, two versions of the P2 dataset were created:
-
-- **With `trophies`** — retaining the player trophy-related features.
-- **Without `trophies`** — removing the trophy-related features.
-
-This creates a controlled experiment in which the same modelling approach can be evaluated with and without the potentially problematic feature group.
-
-The motivation is particularly relevant to the way the Clash of Clans league system works.
-
-Historically, trophies had a much more direct relationship with clan ranking. However, changes to the league system and the introduction of **league floors** altered this relationship.
-
-Under the current system, trophies still contain predictive information, but they do not necessarily determine clan rank on their own. They can provide additional information for differentiating players within the same league.
-
-At the same time, **Town Hall level** becomes more important because league floors constrain the possible league positions associated with player progression.
-
-The experiment therefore investigates three different aspects:
-
-1. The historical relationship between trophies and clan rank.
-2. The current relationship under the league-floor system.
-3. The remaining predictive value of trophies as additional information.
-
-The final decision to retain both dataset variants allows the contribution of `trophies` to be evaluated **empirically rather than assumed beforehand**.
-
-Detailed model results and the final interpretation of this experiment are discussed in the **P2 — Clan Rank Regression** section.
-
----
+Distributions were analyzed separately for each problem, in the context of its specific objective, to identify highly concentrated or skewed variables, extreme values, class imbalances, strong inter-variable relationships, and potentially redundant or proxy features. The resulting visualizations inform the feature and modelling decisions described for each problem.
 
 ### EDA Findings
 
-Overall, the EDA confirmed that the processed datasets were suitable for the subsequent modelling stages and provided additional insight into the structure of the data.
+The EDA confirmed that the processed datasets were suitable for modelling, and reinforced one overarching lesson: feature selection can't be reduced to "remove whatever correlates highly." In a progression-based game like Clash of Clans, many correlations reflect genuine relationships between player characteristics rather than redundant information — a theme that recurs throughout the five problems, most directly in P2's trophies audit.
 
-Most importantly, it showed that feature selection cannot always be reduced to removing highly correlated variables.
-
-In a progression-based game such as Clash of Clans, many correlations are expected and can represent genuine relationships between player characteristics rather than redundant information.
-
-For this reason, the EDA was used primarily as a **decision-support stage** for the modelling pipelines, with problem-specific decisions documented alongside each individual machine learning problem.
+## 🧪 Machine Learning Problems
 
 ### P1 — Clan Member Role Classification
 
 #### Objective
 
-The objective of **P1** is to predict the role of a player within their clan based primarily on **player-level characteristics**, rather than relying heavily on information that directly describes the clan.
-
-The target variable is:
-
-```text
-role
-```
-
-The dataset contains four classes:
+Predict a player's role within their clan, based primarily on **player-level characteristics** rather than clan-level information. The target is `role`, with four classes:
 
 ```text
 member
@@ -472,86 +221,34 @@ coLeader
 leader
 ```
 
-One peculiarity of the original dataset is the presence of the `admin` category. Since this is not a standard role name used in the current Clash of Clans role system, its behavior within the dataset was analyzed and interpreted as corresponding to the **Elder** role.
-
-The problem was therefore treated as a **four-class classification task**.
+The dataset's `admin` category isn't a standard role name in the current Clash of Clans role system; based on its behavior in the data, it was interpreted as corresponding to the **Elder** role. P1 was treated as a four-class classification task.
 
 #### Features
 
-The feature set combines contextual clan information with a much larger set of player-level characteristics.
+- **Clan context:** clan level, War League, Clan Capital points, and other clan-level characteristics.
+- **Player characteristics:** Town Hall level, troop levels and progression, hero levels, spell levels, and other progression/activity features.
 
-Some of the relevant features include:
-
-**Clan context**
-
-- Clan level
-- War League
-- Clan Capital points
-- Other clan-level characteristics
-
-**Player characteristics**
-
-- Town Hall level
-- Troop levels and progression
-- Hero levels
-- Spell levels
-- Other player progression and activity features
-
-The objective was to determine whether the role assigned to a player could be inferred from their characteristics and progression within the game.
+The goal was to test whether a player's assigned role can be inferred from their in-game characteristics and progression.
 
 #### Target Distribution
 
-The target distribution was deliberately controlled during dataset construction so that the classes were as balanced as possible.
+Classes were kept as balanced as possible during dataset construction, with one unavoidable exception: `leader`, since a clan has only one leader, making this class inherently harder to balance than the others.
 
-The main exception was the `leader` class, since a clan normally has only **one leader**, making it naturally difficult to balance in the same way as the other roles.
+![P1 Target Distribution](src/results/P1/01_class_distribution.png)
 
-![P1 target distribution](path/to/p1_target_distribution.png)
+#### Models and the `leader` Class
 
-This imbalance became particularly important when evaluating the models.
+Three classifiers were evaluated — **Logistic Regression**, **Random Forest**, and **XGBoost** — initially tuned through a simple, iterative manual process (an intentionally straightforward starting point, before more systematic search methods were introduced later in the project).
 
-#### Models
-
-Three classification algorithms were evaluated:
-
-- **Logistic Regression**
-- **Random Forest**
-- **XGBoost**
-
-The experiments were initially performed using a relatively simple, manual hyperparameter tuning process. Parameters were changed iteratively and the models were retrained to evaluate their effect on performance.
-
-This represented an intentionally straightforward first approach to model optimization, before introducing more systematic hyperparameter search techniques later in the project.
-
-#### Handling the `leader` Class
-
-The main modelling challenge was the `leader` class.
-
-Because there is only one leader per clan, obtaining a perfectly balanced dataset for this class was considerably more difficult than for the other roles.
-
-Simply evaluating the models using overall accuracy would therefore have been misleading. A model could obtain a high accuracy while performing poorly on the minority class.
-
-To address this, **class weighting** was introduced.
-
-The `leader` class was assigned approximately **3–4× more weight** during training, encouraging the models to pay more attention to correctly identifying leaders.
-
-This was particularly interesting when comparing the different algorithms.
+Because leaders are so rare, overall accuracy alone would understate how poorly a model identifies them. **Class weighting** was used to address this: the `leader` class was given roughly **3–4× more weight** during training.
 
 #### Evaluation
 
-The models were evaluated using classification metrics calculated **per class**, including:
+Models were compared using per-class **precision, recall, and F1-score**, with **F1-score as the primary metric** — accuracy alone could hide poor performance on the minority `leader` class.
 
-- Precision
-- Recall
-- F1-score
-
-The **F1-score** was the main metric used for comparison.
-
-Accuracy alone was not considered sufficient because it could hide poor performance on the `leader` class. Looking at the F1-score for each role provided a much clearer picture of how the models actually behaved across the four classes.
-
-![P1 F1-score by class](path/to/p1_f1_by_class.png)
+![P1 F1 Score by Class](src/results/P1/04_f1_by_class.png)
 
 #### Results
-
-The final comparison produced the following results:
 
 | Model | Accuracy | F1 Weighted | F1 Macro | Admin F1 | CoLeader F1 | Leader F1 | Member F1 |
 |---|---:|---:|---:|---:|---:|---:|---:|
@@ -559,37 +256,33 @@ The final comparison produced the following results:
 | XGBoost | 0.5398 | 0.5345 | 0.4955 | 0.4389 | 0.4705 | **0.4185** | 0.6542 |
 | Logistic Regression | 0.4521 | 0.4624 | 0.4236 | 0.4177 | 0.4002 | 0.3271 | 0.5494 |
 
-The **Random Forest** achieved the best overall performance according to accuracy.
+**Random Forest** had the best overall accuracy and weighted/macro F1, but **XGBoost** identified the `leader` class better despite lower overall scores.
+
+![P1 Confusion Matrix](src/results/P1/02_confusion_matrix_random_forest.png)
+
+#### Key Takeaways
+
+- Random Forest had the best overall performance; XGBoost was stronger specifically on the `leader` class.
+- Logistic Regression was the weakest model overall.
+- The `member` class was consistently easier to classify than the leadership-related roles.
+- The `leader` class remained difficult even with class weighting — a limitation of the problem (only one leader per clan) rather than of the modelling approach.
+- Overall accuracy alone does not represent per-class performance fairly.
 
 ### P2 — Clan Rank Regression
 
 #### Objective
 
-The objective of **P2** is to predict the position a player occupies within their clan based on their progression, characteristics and available clan context.
-
-The target variable is:
-
-```text id="y9tmar"
-clan_rank
-```
-
-`clan_rank` represents the player's position within the clan, from **1 to 50**.
-
-The central question of this problem was:
+Predict `clan_rank` — a player's position within their clan, from **1 to 50** — from their progression, characteristics, and available clan context.
 
 > **Can we predict a player's position within their clan from characteristics such as Town Hall level, troops, progression and other player and clan features?**
 
-Two different versions of the dataset were created to investigate how much predictive information was provided by trophy-related variables.
-
 #### Dataset & Features
 
-The same general feature set was used for both experiments, with one important difference: the second version removed all trophy-related variables.
+Two dataset variants were built to measure how much predictive value comes specifically from trophy-related features.
 
-The **with-trophies** dataset contains the complete feature set used for the problem.
+The **with-trophies** dataset uses the full feature set. The **without-trophies** dataset removes:
 
-The **without-trophies** dataset removes the following variables:
-
-```text id="4g02ez"
+```text
 trophies
 trophies_diff_from_clan_mean
 trophies_ratio_to_clan_mean
@@ -600,170 +293,62 @@ clan_mean_trophies
 required_trophies
 ```
 
-The remaining features describe different aspects of player progression and clan context, including variables such as:
+The remaining features describe Town Hall level, player progression, troop and hero/spell progression, clan characteristics, and other player/clan attributes — letting the models attempt to infer clan position without directly using trophy information.
 
-- Town Hall level
-- Player progression
-- Troop levels
-- Hero progression
-- Spell progression
-- Clan characteristics
-- Other player and clan attributes
+#### Proxy and Leakage Audit
 
-This allowed the model to attempt to infer clan position without directly accessing the information most closely related to trophies.
+Before building the two variants, an audit checked whether `trophies` and other candidates — `town_hall_level`, `exp_level`, `war_stars`, `attack_wins`, `defense_wins`, `donations`, `donations_received`, `capital_contributions`, and `builder_base_trophies` — were acting as **proxies for `clan_rank`** rather than legitimate predictors. For each variable, Spearman correlation with `clan_rank` was computed **within individual clans**, then summarized across clans.
 
-#### Why Two Versions?
+For `trophies`, the audit found:
 
-The decision to create two datasets was motivated by the relationship between **trophies** and **clan rank**.
+| Metric | Value |
+|---|---:|
+| Median Spearman correlation | **−0.3963** |
+| 90th percentile of absolute correlation | **1.0** |
+| Clans with absolute correlation > 0.9 | **17.28%** |
 
-Before the main EDA, a dedicated proxy analysis was performed to investigate whether trophy-related variables were simply highly correlated with the target or represented a form of data leakage.
-
-The analysis showed that trophies provided significant predictive information, but the relationship was not treated as automatic evidence of leakage.
-
-Instead of simply removing the variables, the project used an empirical approach:
-
-```text id="u6pra9"
-Potentially Strong Proxy
-        ↓
-Correlation / Proxy Analysis
-        ↓
-Not Treated as Automatic Leakage
-        ↓
-Create Two Dataset Variants
-        ↓
-With Trophies vs. Without Trophies
-        ↓
-Compare Model Performance
-```
-
-This makes it possible to measure how much predictive performance is actually lost when trophy-related information is removed.
+A strong correlation wasn't treated as automatic evidence of leakage. Historically, trophies had a direct relationship with clan rank, but the introduction of **league floors** — trophy thresholds tied to Town Hall level — weakened that direct relationship while making Town Hall level itself more informative about a player's league placement. Trophies still help differentiate players within a league and reset on a **weekly cycle**. Rather than assume leakage or dismiss it, the project measured the effect empirically by comparing model performance with and without trophies.
 
 #### Models
 
-Three regression approaches were evaluated:
-
-- **Ridge Regression**
-- **Random Forest**
-- **XGBoost**
-
-The initial experiments provided a baseline comparison between different model families.
-
-As the experiments progressed, **Optuna** was introduced for systematic hyperparameter optimization of XGBoost.
-
-Random Forest was considerably more computationally expensive to train, making extensive hyperparameter optimization less practical. XGBoost therefore became the main candidate for automated optimization.
-
-#### Hyperparameter Optimization
-
-Optuna was used to search for better XGBoost configurations rather than relying exclusively on manually selected parameters.
-
-The optimization process was used to identify the strongest XGBoost configuration for the regression task.
-
-This became an important point in the development of the project because P2 was where Optuna became particularly useful for finding strong configurations without manually testing parameters one by one.
-
-The resulting **Optuna-optimized XGBoost model** was the best-performing approach in both dataset variants.
+Three regression approaches were compared: **Ridge Regression**, **Random Forest**, and **XGBoost**. Random Forest proved expensive to tune extensively, so **XGBoost**, optimized with **Optuna**, became the main candidate for systematic hyperparameter search — and produced the best-performing model in both dataset variants.
 
 #### Evaluation
 
-The regression models were evaluated using:
+Models were scored with **MAE** (average error, in ranking positions), **RMSE** (penalizes larger errors more), and **R²** (variance in `clan_rank` explained by the model).
 
-- **Mean Absolute Error (MAE)**
-- **Root Mean Squared Error (RMSE)**
-- **R²**
+#### Results
 
-MAE provides an interpretable measure of the average prediction error in ranking positions, while RMSE gives greater weight to larger errors.
+**With trophies:**
 
-R² was used to measure how much of the variance in `clan_rank` was explained by the model.
+| Model | MAE | RMSE | R² |
+|---|---:|---:|---:|
+| **XGBoost + Optuna** | **2.0537** | **3.3092** | **0.9134** |
+| Random Forest v2 | 2.0882 | 3.4162 | 0.9077 |
+| Ridge Regression | 3.96 | 5.293 | 0.77 |
 
-#### Results — With Trophies
+![P2 Actual vs Predicted — XGBoost](src/results/P2/with_trophies/01_actual_vs_predicted_xgboost.png)
 
-The best-performing model was **XGBoost optimized with Optuna**.
+**Without trophies:**
 
-| Metric | XGBoost + Optuna |
-|---|---:|
-| MAE | **2.0537** |
-| RMSE | **3.3092** |
-| R² | **0.9134** |
-
-For comparison, the Random Forest v2 model achieved:
-
-| Metric | Random Forest v2 |
-|---|---:|
-| MAE | 2.0882 |
-| RMSE | 3.4162 |
-| R² | 0.9077 |
-
-Ridge Regression achieved:
-
-| Metric | Ridge Regression |
-|---|---:|
-| MAE | 3.96 |
-| RMSE | 5.293 |
-| R² | 0.77 |
-
-The difference between the two models was relatively small, but XGBoost achieved the strongest overall results.
-
-#### Results — Without Trophies
-
-Removing the trophy-related variables reduced performance, but the models retained substantial predictive capability.
-
-The best-performing model was again **XGBoost + Optuna**:
-
-| Metric | XGBoost + Optuna |
-|---|---:|
-| MAE | **2.5287** |
-| RMSE | **3.8863** |
-| R² | **0.8805** |
-
-Random Forest v2 achieved:
-
-| Metric | Random Forest v2 |
-|---|---:|
-| MAE | 2.5836 |
-| RMSE | 3.9731 |
-| R² | 0.8751 |
-
-Ridge Regression performed substantially worse:
-
-| Metric | Ridge Regression |
-|---|---:|
-| MAE | 4.1836 |
-| RMSE | 5.5754 |
-| R² | 0.7541 |
-
-#### With vs. Without Trophies
-
-The comparison between the two dataset variants shows a clear but relatively moderate performance difference.
+| Model | MAE | RMSE | R² |
+|---|---:|---:|---:|
+| **XGBoost + Optuna** | **2.5287** | **3.8863** | **0.8805** |
+| Random Forest v2 | 2.5836 | 3.9731 | 0.8751 |
+| Ridge Regression | 4.1836 | 5.5754 | 0.7541 |
 
 | Dataset | Best Model | MAE | RMSE | R² |
 |---|---|---:|---:|---:|
 | **With trophies** | XGBoost + Optuna | **2.0537** | **3.3092** | **0.9134** |
 | **Without trophies** | XGBoost + Optuna | **2.5287** | **3.8863** | **0.8805** |
 
-Removing trophy-related features therefore resulted in:
+Removing trophy-related features raised MAE and RMSE and lowered R², as expected — but the model still explained **88.05%** of the variance in `clan_rank` without them, showing that trophies improve performance without being the only usable signal.
 
-- Higher MAE
-- Higher RMSE
-- Lower R²
-
-However, the model still achieved an **R² of 0.8805** without any of the explicitly trophy-related variables.
-
-This suggests that trophies provide meaningful predictive information, but they are **not the only source of information available for predicting clan rank**.
+![P2 R² Comparison](src/results/P2/07_r2_comparison.png)
 
 #### Why Are Trophies Predictive?
 
-The importance of trophies was not particularly surprising given their role in the game's league system.
-
-Players compete within a **league system**, and their league is related to their progression and, in particular, their Town Hall level. The current system also introduces **trophy floors depending on Town Hall level**.
-
-Players then compete within their respective leagues, with their trophy count providing additional information about their relative position.
-
-The trophy count is also part of a **weekly cycle**: after the league period, trophies are reset and players begin competing again in the next cycle.
-
-Therefore, Town Hall level provides important contextual information about the player's league, while trophies provide additional information that can help distinguish players within that context.
-
-Conceptually:
-
-```text id="rutr5y"
+```text
 Town Hall / Player Progression
             ↓
       League Context
@@ -775,300 +360,111 @@ Town Hall / Player Progression
         Clan Rank
 ```
 
-This helps explain why both **Town Hall-related features** and **trophy-related features** can be highly predictive of clan rank without trophies necessarily representing data leakage.
+Town Hall level determines a player's league context (via league floors), and trophies then provide additional information about relative position within that context — which is why both groups of features are predictive without trophies necessarily representing leakage.
 
 #### Feature Importance
 
-The feature-importance analysis compares the contribution of the most important variables across the four models.
+Across the evaluated models, features such as `members`, `league_tier_id`, and `town_hall_level_clan_pct` were consistently among the most important, though their exact ranking varied by model and dataset variant.
 
-![P2 feature importance](path/to/p2_feature_importance.png)
+![P2 Feature Importance Comparison](src/results/P2/with_trophies/08_feature_importance_comparison.png)
 
 #### Analysis
 
-The main finding from P2 is that **removing a highly predictive group of variables does not necessarily make a model useless**.
+Removing a highly predictive group of features didn't make the model useless — the remaining player and progression features still let XGBoost explain roughly **88%** of the variance in clan rank. This reinforced a broader lesson from the EDA: strong correlation with a target should be investigated, not assumed to be leakage. XGBoost was the strongest model in both dataset variants; more generally across the project, **XGBoost performed particularly well on the regression problems**, while Random Forest was comparatively stronger on the classification problems.
 
-Trophy-related variables clearly improve performance, but the remaining player and progression features still contain enough information for XGBoost to predict clan rank with an R² of approximately **0.88**.
+#### Model Reproducibility: A Feature-Mismatch Lesson
 
-The comparison also reinforced the importance of distinguishing between **correlation and data leakage**.
-
-A variable being strongly correlated with a target does not automatically mean that it should be removed. Instead, the relationship should be understood in the context of how the target and feature are generated.
-
-In this case, rather than assuming that trophies represented leakage, the project tested both possibilities empirically.
-
-The results showed that trophies provide useful information, but the model is still capable of learning substantial information about clan rank from other characteristics.
-
-#### Model Selection
-
-XGBoost was the strongest model across both dataset variants.
-
-This experiment also reinforced an observation from the project: **XGBoost performed particularly well on the regression problems**, while Random Forest showed stronger characteristics in the classification experiments.
-
-The use of Optuna made XGBoost especially attractive because it allowed systematic hyperparameter optimization without the same level of manual experimentation required during the earlier stages of the project.
-
-#### MLflow & Model Reproducibility
-
-P2 also exposed an important ML engineering issue when loading trained models from MLflow.
-
-A model cannot be reliably reused simply because the model file itself has been saved. The feature representation used during inference must also remain consistent with the representation used during training.
-
-During the development of P2, a **feature mismatch** was encountered when loading a trained model.
-
-The problem was addressed by preserving and validating the model's expected feature information, using the information available through the trained model and MLflow, including:
-
-- Model signatures
-- Feature names
-- Number of expected features
-- Stored model information
-
-This ensured that the model could be loaded and evaluated using the same feature representation expected during training.
-
-This became an important practical lesson about **model reproducibility and feature alignment**.
+Loading a trained model from MLflow isn't just a matter of the model file existing — the feature representation used at inference must match training. During P2's development, a saved XGBoost model was reloaded with a different number of features than it was trained on. The model was retrained on the correct, aligned feature set, and MLflow's stored model signatures, feature names, and expected feature count were used to validate consistency going forward (see *Machine Learning Engineering* for the general lesson this taught the project).
 
 #### Key Takeaways
 
-P2 highlighted several important lessons from both the machine learning and engineering perspectives:
-
-- Strong correlation does not automatically mean data leakage.
-- Potential proxy variables should be investigated rather than removed blindly.
-- Comparing models with and without a potentially dominant feature group can quantify its actual contribution.
-- Trophy-related variables significantly improve clan-rank prediction, but they are not essential for achieving strong predictive performance.
-- XGBoost + Optuna achieved the best results in both dataset variants.
-- The model achieved an R² of **0.9134 with trophies** and **0.8805 without trophies**.
-- Optuna provided a more systematic approach to XGBoost optimization.
-- Feature alignment is essential when saving and loading machine learning models.
-- A model artifact alone is not enough for reliable inference; the expected feature representation must also be preserved.
+- Strong correlation does not automatically mean data leakage — potential proxy variables should be investigated, not removed blindly.
+- Comparing models with and without a potentially dominant feature group quantifies its actual contribution.
+- Trophy-related variables clearly help, but aren't essential: the model reached R² = 0.8805 without them.
+- **XGBoost + Optuna** achieved the best results in both variants: **R² = 0.9134 with trophies, 0.8805 without**.
+- Optuna gave a more systematic approach to XGBoost tuning than manual search.
+- A trained model's feature representation must be preserved and validated alongside the model artifact itself.
 
 ### P3 — Clan War Performance Regression
 
 #### Objective
 
-The objective of **P3** is to investigate whether a clan's war performance can be explained by its characteristics and overall profile.
+P3 investigates whether a clan's **historical** war performance can be explained by its characteristics — using the clan's existing war record to build a performance metric, rather than attempting to predict genuinely future results. The target is:
 
-Rather than attempting to predict a clan's **future** war performance, the problem uses the clan's existing war history to construct a performance metric and then investigates how well that metric can be explained by the available features.
-
-The target variable is:
-
-```text id="m3q7vx"
-war_success_rate
-```
-
-It is calculated as:
-
-```python
+```text
 war_success_rate = war_wins / war_total
 ```
 
-Therefore, the target represents the clan's **historical war success rate at the time represented by the dataset**.
-
-The central question was:
-
 > **Can a clan's war performance be explained by its characteristics and available clan-level information?**
 
-This makes P3 a **regression problem**, where the model attempts to estimate a continuous performance measure rather than a discrete class.
+This is a **regression problem**: the model estimates a continuous performance measure rather than a discrete class (P4, below, reframes the same question as classification).
 
 #### Dataset Construction
 
-The dataset was intentionally restricted to clans with a sufficiently large war history.
-
-Clans with too few recorded wars were filtered out before calculating the target:
+Clans with too little war history were filtered out before calculating the target:
 
 ```python
 valid_clans = clans[clans["war_total"] >= min_war_total].copy()
-```
-
-The target was then calculated as:
-
-```python
 valid_clans["war_success_rate"] = (
     valid_clans["war_wins"].astype(float)
     / valid_clans["war_total"].replace(0, np.nan)
 )
 ```
 
-Rows for which a valid success rate could not be calculated were subsequently removed.
+Rows where a valid rate couldn't be computed were removed. The final dataset contains **31,289 rows** and **51 columns**; after removing identifiers, metadata, and the target, **44 features** were used for training. The features describe general clan-level characteristics only — no future war results are used as predictors.
 
-This filtering resulted in a smaller dataset than some of the other problems in the project, but provided a more reliable basis for measuring historical war performance.
+#### Models and Results
 
-The final dataset contains:
-
-```text id="8v5cnd"
-31,289 rows
-51 columns
-```
-
-After removing identifiers, metadata and the target variable, **44 features** were used for model training.
-
-#### Features
-
-P3 focuses primarily on **general clan-level characteristics**.
-
-The features describe different aspects of the clan and its composition, allowing the models to investigate whether a clan's overall profile contains enough information to explain differences in historical war success.
-
-The dataset intentionally focuses on information available about the clan rather than introducing future war results as predictive variables.
-
-#### Models
-
-Three regression approaches were evaluated:
-
-- **Linear Regression**
-- **Random Forest**
-- **Gradient Boosting**
-
-The models were introduced progressively to determine whether increasingly flexible approaches could capture relationships that a simple linear model could not.
-
-#### Linear Regression Baseline
-
-Linear Regression was used as the initial baseline.
-
-The purpose was not necessarily to obtain the best possible model, but to establish how much of the target could be explained using a simple linear relationship between the features and `war_success_rate`.
-
-The baseline achieved:
-
-| Metric | Linear Regression |
-|---|---:|
-| MAE | 0.1071 |
-| RMSE | 0.1366 |
-| R² | 0.0764 |
-
-The relatively low R² indicated that the problem was considerably more difficult than some of the other regression tasks in the project.
-
-This provided a useful reference point for evaluating whether more complex models could extract additional information from the same features.
-
-#### Random Forest
-
-Random Forest was then introduced as a non-linear alternative.
-
-The motivation was to investigate whether the distribution of the data across decision-tree leaves could capture relationships that Linear Regression could not model.
-
-Randomized hyperparameter search was used to improve the model configuration.
-
-The resulting Random Forest achieved:
-
-| Metric | Random Forest |
-|---|---:|
-| MAE | 0.0986 |
-| RMSE | 0.1262 |
-| R² | 0.2113 |
-
-The improvement over Linear Regression confirmed that non-linear relationships were present in the dataset.
-
-However, the overall predictive power remained relatively limited.
-
-#### Gradient Boosting + Optuna
-
-After observing that tree-based models performed better than the linear baseline, **Gradient Boosting** was selected as the next approach.
-
-Gradient Boosting was chosen because boosting methods are well suited to regression problems and can progressively improve predictions by focusing on the errors made by previous trees.
-
-It also provided an opportunity to explore a different boosting approach after having relied heavily on XGBoost in other parts of the project.
-
-The Gradient Boosting model was optimized using **Optuna**, with **30 trials** used to search for a strong hyperparameter configuration.
-
-The resulting model became the best-performing model in P3.
-
-| Metric | Gradient Boosting + Optuna |
-|---|---:|
-| MAE | **0.0980** |
-| RMSE | **0.1255** |
-| R² | **0.2206** |
-
-#### Model Comparison
-
-The progression of the models can be summarized as:
+Three regression models were introduced progressively, from simplest to most flexible:
 
 | Model | MAE | RMSE | R² |
 |---|---:|---:|---:|
 | Linear Regression | 0.1071 | 0.1366 | 0.0764 |
-| Random Forest | 0.0986 | 0.1262 | 0.2113 |
-| **Gradient Boosting + Optuna** | **0.0980** | **0.1255** | **0.2206** |
+| Random Forest + Randomized Search | 0.0986 | 0.1262 | 0.2113 |
+| **Gradient Boosting + Optuna (30 trials)** | **0.0980** | **0.1255** | **0.2206** |
 
-The results show a clear improvement when moving from a linear model to tree-based approaches.
+![P3 Actual vs Predicted — Gradient Boosting](src/results/P3/01_actual_vs_predicted_gradient_boosting.png)
 
-However, the difference between Random Forest and Gradient Boosting was relatively small. The final R² of **0.2206** indicates that the model could capture some of the structure in the target, but a large amount of the variability in war success remained unexplained.
+**Linear Regression** served as a baseline to see how much of the target a simple linear relationship could explain; its low R² suggested the problem was harder than the project's other regression tasks. **Random Forest**, tuned with randomized search, improved on the baseline, confirming the presence of non-linear relationships — though overall predictive power stayed limited. **Gradient Boosting**, optimized with **30 Optuna trials**, was chosen as a different boosting approach (after XGBoost had already been used heavily elsewhere) and became the best-performing model, though only marginally ahead of Random Forest.
 
 #### Feature Importance
 
-Feature importance analysis provided additional insight into what the models were learning.
+`clan_rank` was one of the most prominent features — intuitive, since a clan's overall rank is generally tied to a longer progression history, which also relates to accumulated war experience.
 
-One of the most prominent features was **clan rank**.
-
-![P3 feature importance](path/to/p3_feature_importance.png)
-
-This result is intuitive within the context of the game.
-
-A clan with a higher overall rank is generally associated with a more established progression history, which can also be related to the amount of experience accumulated through wars and the number of wars won over time.
-
-The feature importance analysis therefore provided a useful connection between the model's behavior and the underlying domain.
+![P3 Feature Importance Comparison](src/results/P3/08_feature_importance_comparison.png)
 
 #### Analysis
 
-P3 produced a substantially different result from P2.
-
-While P2 achieved a very high R², P3 showed that predicting a clan's historical war success rate from its available characteristics was considerably more difficult.
-
-The progression of the experiments demonstrates this clearly:
-
 ```text
-Linear Regression
-R² = 0.0764
+Linear Regression              R² = 0.0764
         ↓
-Random Forest
-R² = 0.2113
+Random Forest                  R² = 0.2113
         ↓
-Gradient Boosting + Optuna
-R² = 0.2206
+Gradient Boosting + Optuna     R² = 0.2206
 ```
 
-The non-linear models were clearly better than the linear baseline, but increasing model complexity did not produce a dramatic improvement.
+![P3 Model Comparison](src/results/P3/06_mae_rmse_comparison.png)
 
-This suggests that the available clan-level characteristics contain **some information about war performance, but not enough to accurately explain all of its variability**.
-
-The result was somewhat surprising during development, as the expectation was that war performance would be easier to model from the available clan characteristics.
-
-One possible source of additional variability in Clash of Clans is the way clans actually approach wars. For example, some communities use practices such as **Friendly War Arrangements (FWAs)**, where war outcomes can be deliberately coordinated for purposes such as resource farming. However, there is no evidence from this experiment that such behavior was the primary explanation for the model's limited predictive performance.
-
-The main conclusion was therefore not that the dataset contained a specific hidden factor, but that **war performance is simply a difficult quantity to explain from the available features**.
-
-#### What P3 Demonstrated
-
-P3 provided an important lesson about the limits of machine learning.
-
-A more complex model does not automatically turn a difficult prediction problem into an accurate one.
-
-Even after moving from Linear Regression to Random Forest and then to an optimized Gradient Boosting model, the final R² remained relatively modest.
-
-The experiment therefore demonstrated that:
-
-- Some problems contain substantially more predictable structure than others.
-- Non-linear models can improve performance over simple baselines.
-- Hyperparameter optimization can produce measurable improvements.
-- However, model complexity cannot compensate indefinitely for limited predictive information in the features.
-- Not every problem is equally suitable for highly accurate machine learning predictions.
-
-This was one of the main reasons for moving the project's attention toward **P4**, which reframed the problem as a classification task.
+Non-linear models clearly beat the linear baseline, but added complexity produced only a small further gain — the final R² of **0.2206** indicates that the available clan-level characteristics explain only part of the variability in historical war performance. This was a somewhat unexpected result. One possible contributing factor is that some communities deliberately coordinate war outcomes for purposes such as resource farming (e.g. **Friendly War Arrangements**), but this experiment found no evidence that such behavior was the primary explanation. The more likely conclusion is simply that **war performance is a difficult quantity to explain from the available features**, not that the dataset hides one specific unaccounted-for factor.
 
 #### Key Takeaways
 
-P3 highlighted several important lessons from the project:
-
-- The objective was to analyze **historical clan war performance**, not predict future war outcomes.
-- The `war_success_rate` target was constructed as `war_wins / war_total`.
-- Filtering clans by minimum war history helped avoid unreliable targets based on very few wars.
-- Tree-based models significantly outperformed the Linear Regression baseline.
-- Gradient Boosting + Optuna achieved the best results.
-- The final model achieved an **R² of 0.2206**, showing that the problem remained difficult despite using non-linear models and hyperparameter optimization.
-- Feature importance identified **clan rank** as one of the strongest predictors.
-- The experiment demonstrated that **not every real-world problem contains enough predictable information for machine learning to produce highly accurate results**.
+- The objective was to explain **historical** war performance, not predict future outcomes.
+- `war_success_rate = war_wins / war_total`, computed only for clans with sufficient war history.
+- Tree-based models clearly outperformed the Linear Regression baseline.
+- **Gradient Boosting + Optuna** achieved the best result: **R² = 0.2206**.
+- `clan_rank` was the most prominent feature.
+- Increasing model complexity did not solve the problem's underlying difficulty — a lesson that motivated reframing the problem as classification in **P4**.
 
 ### P4 — Clan Performance Classification
 
 #### Objective
 
-The objective of **P4** is exactly the same as in P3: to investigate whether a clan's war performance can be explained by its characteristics and available clan-level information.
+P4 asks the same underlying question as P3 — can a clan's war performance be explained by its characteristics? — but reframes it as classification:
 
-The difference is how the problem is formulated.
+> **Can a clan's war performance be classified based on its characteristics and available clan-level information?**
 
-While **P3 treats `war_success_rate` as a continuous target and approaches the problem as regression**, P4 transforms the same underlying performance measure into three discrete classes:
+Instead of predicting a continuous `war_success_rate`, P4 predicts a `performance_class` with three categories:
 
 ```text
 low
@@ -1076,84 +472,28 @@ medium
 high
 ```
 
-The central question therefore remains:
+derived using two configurable thresholds:
 
-> **Can a clan's war performance be classified based on its characteristics and available clan-level information?**
+```text
+war_success_rate < low_threshold                   → low
+low_threshold ≤ war_success_rate < high_threshold   → medium
+war_success_rate ≥ high_threshold                   → high
+```
 
-This reformulation was motivated by the difficulty observed in P3. Predicting an exact continuous value for `war_success_rate` proved to be a relatively difficult task, so P4 investigates whether the problem becomes more tractable when performance is divided into meaningful categories.
+This reformulation was motivated directly by P3's difficulty: predicting an exact continuous value proved hard, so P4 tests whether grouping performance into categories makes the problem more tractable.
 
 #### Dataset Construction
 
-P4 uses the **same underlying dataset and feature set as P3**.
-
-However, P4 has its own dataset because the target variable is transformed from the continuous `war_success_rate` used in P3 into a categorical variable called:
+P4 uses the same underlying dataset and features as P3, with `war_success_rate` replaced by `performance_class`. As in P3, variables that directly encode war outcomes are excluded from the features to prevent leakage:
 
 ```text
-performance_class
+war_wins, war_losses, war_ties, war_win_streak, war_points,
+war_total, war_success_rate, win_rate, loss_rate, tie_rate
 ```
-
-The transformation is performed using two configurable thresholds:
-
-```text
-war_success_rate < low_threshold
-        ↓
-       low
-
-low_threshold ≤ war_success_rate < high_threshold
-        ↓
-     medium
-
-war_success_rate ≥ high_threshold
-        ↓
-      high
-```
-
-The classification dataset is therefore constructed from the P3 regression dataset while preserving the same predictive information.
-
-The only fundamental difference is the target representation:
-
-```text
-P3
-war_success_rate
-      ↓
-Continuous value
-      ↓
-Regression
-```
-
-```text
-P4
-war_success_rate
-      ↓
-low / medium / high
-      ↓
-Classification
-```
-
-As in P3, variables that directly represent war outcomes are excluded from the predictive features. This includes variables such as:
-
-```text
-war_wins
-war_losses
-war_ties
-war_win_streak
-war_points
-war_total
-war_success_rate
-win_rate
-loss_rate
-tie_rate
-```
-
-This prevents the models from directly using the information from which the target performance was constructed.
 
 #### Target Distribution
 
-Unlike P1, the class distribution in P4 was deliberately balanced.
-
-This was possible because the class boundaries could be controlled through the thresholds used to transform `war_success_rate`.
-
-The resulting distribution was approximately:
+Unlike P1, the class boundaries here were controllable, so the classes were deliberately balanced:
 
 | Class | Proportion |
 |---|---:|
@@ -1161,50 +501,21 @@ The resulting distribution was approximately:
 | Low | 33.32% |
 | High | 33.25% |
 
-This was an intentional design decision.
+![P4 Class Distribution](src/results/P4/01_class_distribution.png)
 
-In P1, the `leader` class was naturally much rarer because a clan can only have one leader. In P4, the target definition itself could be adjusted, so the classes were balanced to avoid introducing an unnecessary class-imbalance problem.
-
-With three approximately equally represented classes, a random classifier would achieve an accuracy of roughly **33.3%**, providing a useful baseline for interpreting the results.
+With three roughly equal classes, a random classifier would score about **33.3%** accuracy — the baseline the models are measured against.
 
 #### Models
 
-Three classification approaches were evaluated:
-
-- Random Forest
-- XGBoost
-- Multi-Layer Perceptron (MLP)
-
-Random Forest and XGBoost were included as tree-based approaches already used elsewhere in the project.
-
-The **MLP** was introduced specifically in P4 to explore a different modelling approach.
-
-Rather than choosing it because it was expected to perform better beforehand, it was added after investigating whether a neural-network-based classifier could be integrated into the existing workflow using **scikit-learn and Optuna**, without requiring a separate PyTorch implementation.
-
-This provided another perspective on the same problem and expanded the range of models evaluated in the ML Lab.
+Three classifiers were evaluated: **Random Forest**, **XGBoost**, and a **Multi-Layer Perceptron (MLP)**. The MLP was added specifically for P4 to test whether a neural-network classifier could be integrated using **scikit-learn and Optuna**, without needing a separate PyTorch implementation.
 
 #### Hyperparameter Optimization
 
-Hyperparameter optimization was performed using **Optuna**.
-
-Both XGBoost and MLP were given **50 optimization trials**.
-
-The purpose of using 50 trials was not only to search for better hyperparameters, but also to investigate whether increasing the number of trials could provide a meaningful improvement compared with the smaller searches used in other problems.
-
-This was part of evaluating the practical trade-off between **optimization effort and model performance**.
-
-Random Forest was evaluated separately without the same 50-trial Optuna search.
+**XGBoost** and the **MLP** were each given **50 Optuna trials** — partly to search for better configurations, and partly to test whether a larger optimization budget than used elsewhere in the project would pay off. Random Forest was evaluated without this 50-trial search.
 
 #### Evaluation
 
-Because the dataset contains three balanced classes, several classification metrics were used:
-
-- Accuracy
-- Balanced Accuracy
-- Macro F1
-- Weighted F1
-
-**Macro F1** is particularly useful for this problem because it gives equal importance to all three classes instead of allowing the overall score to be dominated by the most frequent class.
+Because the classes are balanced, models were compared on **accuracy, balanced accuracy, macro F1, and weighted F1** — macro F1 in particular, since it weighs all three classes equally.
 
 #### Results
 
@@ -1214,556 +525,148 @@ Because the dataset contains three balanced classes, several classification metr
 | XGBoost + Optuna | 0.4986 | 0.4985 | 0.4925 | 0.4926 |
 | **MLP + Optuna** | **0.5037** | **0.5038** | **0.4962** | **0.4962** |
 
-The **MLP + Optuna** configuration achieved the best overall results, although the difference between the three models was relatively small.
+![P4 Confusion Matrix — MLP](src/results/P4/02_confusion_matrix_mlp.png)
 
-With approximately balanced classes, the random baseline is around 33.3%. The best model achieved approximately **50.4% accuracy**, indicating that the models were able to capture meaningful information about clan performance, while also showing that the problem remained difficult.
+**MLP + Optuna** was best overall, though by a small margin over XGBoost. At roughly **50.4%** accuracy against a **33.3%** random baseline, the models captured meaningful signal — while still leaving the task far from solved.
 
 #### Analysis
 
-P4 produced substantially better results than the regression formulation explored in P3.
+P4 performed substantially better than P3's regression formulation, suggesting that classifying a clan into a performance tier is more tractable than predicting its exact `war_success_rate`. Confusion matrices show the **low** and **high** classes are easier to separate than **medium**, whose clans sit close enough to both neighboring categories that their characteristics can overlap with either — the classification framing didn't make the problem easy, it changed the kind of uncertainty involved. More broadly, this comparison shows that **problem formulation can matter as much as model choice**: the same underlying data and predictive signal produced a much more workable task once reframed as classification.
 
-This suggests that, for this particular problem, predicting an exact value of `war_success_rate` is considerably more difficult than determining whether a clan belongs to a lower, intermediate or higher performance category.
-
-The introduction of the **medium** class also makes the problem more nuanced.
-
-The confusion matrices show that the models can identify the **low** and **high** classes relatively well, while the main difficulty is distinguishing the **medium** class from the two extremes.
-
-This behaviour is intuitive: a clan near the boundary between performance categories can share characteristics with both neighbouring classes, making it harder for the model to assign a clear label.
-
-Therefore, the classification formulation does not simply make the problem "easy". Instead, it changes the type of uncertainty the model has to deal with.
-
-#### From Regression to Classification
-
-The comparison between P3 and P4 demonstrated an important modelling consideration:
-
-> **When an exact continuous target is difficult to predict, reformulating the problem into meaningful categories can make the task more tractable.**
-
-Instead of asking the model to predict an exact value such as:
-
-```text
-0.63
-```
-
-the problem can ask whether the clan belongs to:
-
-```text
-low
-medium
-high
-```
-
-This also allows additional intermediate classes to be introduced when a simple binary distinction would be too coarse.
-
-In P4, the `medium` category provides information about clans whose performance is neither clearly low nor clearly high, although this also makes classification more difficult.
-
-#### What P4 Demonstrated
-
-P4 demonstrated that **problem formulation can be as important as model selection**.
-
-Using the same underlying predictive information as P3 but changing the target representation produced a considerably more tractable machine learning problem.
-
-The results also showed that adding more sophisticated models does not necessarily produce dramatically different performance. MLP achieved the best result, but only by a relatively small margin over XGBoost.
-
-The problem therefore remains limited by the predictive information available in the dataset rather than simply by the choice of algorithm.
+![P4 Model Comparison](src/results/P4/03_global_metrics_comparison.png)
 
 #### Key Takeaways
 
-- P4 uses the **same underlying data and predictive features as P3**, but creates a separate classification dataset by replacing `war_success_rate` with `performance_class`.
-- The target is divided into **low, medium and high** performance classes using configurable thresholds.
-- The three classes were deliberately balanced to avoid unnecessary class-imbalance issues.
-- Random Forest, XGBoost and MLP were evaluated.
-- XGBoost and MLP were optimized with **50 Optuna trials**.
-- **MLP + Optuna** achieved the best result with **50.37% accuracy and 49.62% macro F1**.
-- The approximately 50% accuracy is meaningfully above the ~33.3% random baseline for three balanced classes.
-- Low and high performance were easier to classify than the medium class.
-- Reformulating a difficult regression problem as a classification problem can make the target more tractable.
-- The experiment reinforced the importance of **choosing an appropriate problem formulation**, rather than assuming that a more complex model will always solve a difficult prediction problem.
+- P4 reuses P3's underlying data and features, replacing `war_success_rate` with a three-way `performance_class`.
+- Classes were deliberately balanced (~33% each) to avoid an artificial imbalance problem.
+- XGBoost and MLP were each optimized with 50 Optuna trials; Random Forest was not.
+- **MLP + Optuna** achieved the best result: **50.37% accuracy, 0.4962 macro F1** — meaningfully above the ~33.3% random baseline.
+- The `medium` class was harder to classify than `low` or `high`.
+- Reframing a difficult regression problem as classification made the underlying signal more tractable, without changing what information was actually available.
 
 ### P5 — Player Clustering
 
 #### Objective
 
-The objective of **P5** is to investigate whether Clash of Clans players can be divided into different groups based on their characteristics.
-
-Unlike P1–P4, there is no predefined target variable. Instead, the goal is to discover whether the dataset contains naturally occurring patterns that can be used to identify different types of players.
-
-The central question was:
+Discover whether Clash of Clans players fall into natural groups based on their characteristics — an **unsupervised** problem, with no predefined target or labels.
 
 > **What types of players can be identified based on their characteristics and progression?**
 
-This makes P5 an **unsupervised learning problem**, where the models are not given predefined labels and must instead discover structure within the data.
-
-Some of the most informative characteristics include variables such as:
-
-- Town Hall level
-- Player progression
-- League and trophy-related statistics
-- Donations and donation ratios
-- War activity
-- Clan Capital contributions
-- Troop, hero, spell and equipment progression
-
-These features capture different aspects of a player's level of progression and activity within the game.
+Relevant features include Town Hall level, player progression, league and trophy statistics, donations and donation ratios, war activity, Clan Capital contributions, and troop/hero/spell/equipment progression.
 
 #### Dataset
 
-P5 uses the largest dataset in the project, containing approximately **836,830 players**.
-
-The clustering dataset contains **31 columns**, of which **30 features** are used for clustering.
-
-The features describe different aspects of player progression, activity and gameplay.
-
-The dataset does not contain a target variable because the objective is to discover the groups directly from the feature space.
-
-An additional analysis showed **370 duplicated feature rows**. These were retained because they can represent different players who happen to have exactly the same values across all clustering features. Removing them would therefore remove valid player observations rather than simply removing accidental duplicate records.
+The largest dataset in the project: approximately **836,000 players**, **31 columns**, of which **30 features** are used for clustering (no target variable). **370 duplicated feature rows** were kept rather than dropped, since they can represent genuinely different players who happen to share identical values across every clustering feature.
 
 #### Preprocessing
 
-Before applying the clustering algorithms, the features were standardized using `StandardScaler`.
-
-This step was particularly important because the dataset contains variables with very different numerical scales.
-
-For example, features such as:
-
-```text
-town_hall_level
-donation_ratio
-clan_capital_contributions
-best_trophies
-```
-
-operate on completely different scales.
-
-Distance-based clustering algorithms are sensitive to these differences. Without scaling, variables with larger numerical ranges could dominate the distance calculations and disproportionately influence the resulting clusters.
-
-Therefore, the features were standardized before applying the clustering algorithms.
+Features were standardized with `StandardScaler` before clustering. This mattered because features such as `town_hall_level`, `donation_ratio`, `clan_capital_contributions`, and `best_trophies` operate on very different numeric scales, and distance-based clustering algorithms are sensitive to that — without scaling, large-range variables would dominate the distance calculations.
 
 #### K-Means
 
-K-Means was used as the main clustering approach.
-
-Different values of **K from 2 to 10** were evaluated to determine how the structure of the dataset changed depending on the number of clusters.
-
-The **Silhouette Score** was used to evaluate the resulting cluster structures.
-
-Because calculating the Silhouette Score over the complete dataset would be computationally expensive and would provide little additional practical value for this experiment, a sample of **50,000 players** was used for the metric calculation.
-
-This made the evaluation substantially more manageable while still providing a representative estimate of cluster quality.
-
-The best configuration was:
+**K** was tested from **2 to 10**, with the **Silhouette Score** computed on a **50,000-player sample** to keep evaluation computationally manageable.
 
 | Parameter | Value |
 |---|---:|
-| Number of clusters | **2** |
+| Best K | **2** |
 | Silhouette Score | **0.3926** |
+| Cluster 0 size | 404,225 |
+| Cluster 1 size | 432,605 |
 
-The resulting clusters contained:
+The relatively balanced cluster sizes show K-Means didn't just isolate a small group of outliers.
 
-| Cluster | Players |
-|---|---:|
-| Cluster 0 | 404,225 |
-| Cluster 1 | 432,605 |
-
-The relatively balanced cluster sizes indicate that K-Means did not simply isolate a small group of unusual players while assigning almost everyone else to a single cluster.
-
-#### Cluster Analysis
-
-The two clusters can be interpreted as two broad player profiles.
-
-**Cluster 0 — Higher progression and activity**
-
-The first cluster contains players with substantially higher values across many progression and activity-related features.
-
-For example, compared with the global mean, this cluster has considerably higher:
-
-- Town Hall level
-- Experience level
-- Best trophies
-- War stars
-- Donations
-- Clan Capital contributions
-- Troop levels and counts
-- Hero levels
-- Spell and equipment progression
-- Combat activity
-- Donation ratio
-
-For example:
+**Cluster 0** shows substantially higher progression and activity across most features, while **Cluster 1** is lower on the same measures:
 
 | Feature | Cluster 0 | Cluster 1 |
 |---|---:|---:|
 | Town Hall level | 16.16 | 10.46 |
 | Experience level | 202.77 | 84.61 |
-| Best trophies | 4361.11 | 1578.34 |
-| War stars | 1420.74 | 205.21 |
+| Best trophies | 4,361.11 | 1,578.34 |
+| War stars | 1,420.74 | 205.21 |
 | Donations | 215.89 | 14.07 |
 | Clan Capital contributions | 1,812,094 | 144,682 |
 | Donation ratio | 0.853 | 0.083 |
 | Hero mean level | 49.97 | 19.38 |
 | Troop count | 72.54 | 42.33 |
 
-This cluster can therefore be broadly interpreted as containing **more progressed and/or more active players**.
+![P5 K-Means PCA](src/results/P5/05_pca_kmeans.png)
 
-**Cluster 1 — Lower progression and activity**
-
-The second cluster shows substantially lower values across most progression and activity-related features.
-
-For example, it has lower:
-
-- Town Hall level
-- Experience level
-- War activity
-- Donations
-- Clan Capital contributions
-- Troop and hero progression
-- Equipment progression
-- Combat activity
-- Donation ratio
-
-It can therefore be broadly interpreted as a group of **less progressed and/or less active players**.
-
-An interesting exception is the current trophy count, where Cluster 1 has a slightly higher mean than Cluster 0. This highlights that player profiles cannot necessarily be reduced to a single progression variable such as trophies.
-
-The clustering instead captures a broader combination of progression and activity characteristics.
+One exception: **current trophy count** is slightly *higher* in Cluster 1, showing that player profiles can't be reduced to a single progression variable — the clustering captures a broader combination of progression and activity.
 
 #### DBSCAN
 
-DBSCAN was introduced to investigate whether the dataset contained more irregular or differently shaped groups that K-Means might not capture effectively.
-
-Unlike K-Means, DBSCAN does not require the number of clusters to be specified in advance and can identify observations considered to be noise.
-
-A total of **21 configurations** were evaluated.
-
-The best configuration obtained:
+DBSCAN was tested to check for irregularly shaped groups K-Means might miss. **21 configurations** were evaluated; the best used `eps = 0.3`, `min_samples = 20`:
 
 | Parameter | Value |
 |---|---:|
-| `eps` | 0.3 |
-| `min_samples` | 20 |
-| Number of clusters | 160 |
+| Clusters found | 160 |
 | Noise points | 769,743 |
 | Noise proportion | 91.98% |
 | Silhouette Score | 0.1373 |
 
-Although DBSCAN identified 160 different groups, the result was not considered successful because approximately **92% of the players were classified as noise**.
+![P5 DBSCAN PCA](src/results/P5/06_pca_dbscan.png)
 
-The purpose of using DBSCAN was to investigate whether it could discover more diverse player groups than K-Means. Instead, the algorithm produced a highly fragmented structure while leaving the vast majority of the dataset outside the clusters.
-
-This suggests that the dataset did not fit the assumptions of DBSCAN particularly well at this scale and parameterization.
-
-The PCA visualization also reinforced this conclusion. Rather than identifying dense regions as clusters and isolated observations as noise, DBSCAN classified a very large proportion of the dataset as noise.
-
-Therefore, DBSCAN was considered a **negative result** for this particular dataset.
+With **~92% of players classified as noise**, this was a **negative result** — the dataset didn't fit DBSCAN's assumptions well at this scale and parameterization, despite the larger number of clusters found.
 
 #### Agglomerative Clustering
 
-Agglomerative Clustering was also investigated as another alternative clustering approach.
-
-However, applying it to the complete dataset revealed a major computational limitation.
-
-The dataset contains more than **836,000 players**, making the number of pairwise relationships extremely large. Running the algorithm on the full dataset would require approximately **2.55 TiB of memory**, making the experiment impractical on the available hardware.
-
-The issue was therefore not an implementation error, but a consequence of the computational requirements of applying the algorithm to a dataset of this scale.
-
-Although code for Agglomerative Clustering was implemented, the full experiment was not executed.
-
-Reducing the dataset to a smaller subset was considered, but selecting a representative subset would introduce another problem: the dataset contains many dimensions and player profiles with substantial variation, making the process of manually selecting a smaller group of players representative of the complete population unnecessary for the objective of this experiment.
-
-For this reason, Agglomerative Clustering was left as a documented scalability limitation rather than forcing an experiment on an arbitrarily reduced dataset.
-
-#### PCA Visualization
-
-PCA was used to visualize the clustering structure and provide a lower-dimensional representation of the feature space.
-
-The PCA visualization of the K-Means results supported the interpretation obtained from the cluster statistics, showing the separation between the two broad player profiles.
-
-The DBSCAN visualization was particularly informative because it showed the limitations of the resulting clustering.
-
-A more useful DBSCAN result would have been expected to identify dense regions of players as clusters while treating relatively isolated observations as noise. Instead, the configuration classified most of the dataset as noise.
-
-This provided a visual confirmation that the DBSCAN result was not useful for describing the player population.
+Running Agglomerative Clustering on the full ~836,000-player dataset was estimated to require roughly **2.55 TiB of memory** for the pairwise computations — impractical on the available hardware. This is a computational limitation, not an implementation error; the code exists in the repository, but the full experiment was never executed. Reducing the dataset to a smaller, representative subset was considered but rejected: the many dimensions and range of player profiles made it hard to justify that a manually selected subset would represent the population well enough for this experiment's objective.
 
 #### Model Comparison
 
-The three approaches provided very different outcomes:
-
 | Method | Result |
 |---|---|
-| **K-Means** | 2 meaningful and relatively balanced clusters |
-| **DBSCAN** | 160 clusters but ~91.98% of players classified as noise |
-| **Agglomerative** | Not feasible on the complete dataset due to memory requirements |
+| **K-Means** | 2 meaningful, relatively balanced clusters |
+| **DBSCAN** | 160 clusters, but ~91.98% of players classified as noise |
+| **Agglomerative** | Not feasible on the full dataset (≈2.55 TiB memory) |
 
-K-Means was therefore the most useful approach for this dataset.
-
-The results also demonstrate that clustering algorithms can behave very differently when applied to the same feature space. A method producing more clusters is not necessarily producing a better representation of the underlying data.
+![P5 Silhouette Comparison](src/results/P5/01_silhouette_comparison.png)
 
 #### Analysis
 
-The main result of P5 is that the player population can be divided into two broad groups based on a combination of progression and activity-related characteristics.
-
-The clustering did not simply separate players according to one variable. Instead, the differences appear across many dimensions simultaneously.
-
-Features such as **Town Hall level** provide an indication of game progression, while variables such as **donation ratio**, donations, war activity and Clan Capital contributions provide additional information about player activity.
-
-The resulting clusters therefore represent broader player profiles rather than a single-dimensional ranking.
-
-P5 also demonstrated the importance of evaluating unsupervised learning results beyond simply looking at the number of clusters produced.
-
-DBSCAN generated **160 clusters**, which might initially appear more informative than K-Means producing only two. However, the fact that almost 92% of observations were classified as noise made the result substantially less useful.
-
-Similarly, Agglomerative Clustering showed that an algorithm can be theoretically applicable to a problem while still being impractical at the scale of the available dataset.
-
-#### What P5 Demonstrated
-
-P5 demonstrated a different side of machine learning compared with the previous problems.
-
-In supervised learning, the target is already defined and the model attempts to learn a relationship between the features and that target.
-
-In unsupervised learning, there is no predefined concept of what is "good" or "bad". The objective is instead to discover patterns and structure within the data.
-
-This makes the process more difficult to evaluate, but also more exploratory.
-
-The clustering results revealed patterns in the player population that were not explicitly defined beforehand. The distinction between more progressed and active players and less progressed or active players emerged from the combination of multiple features rather than from a manually assigned label.
-
-The experiment also reinforced that **algorithm choice must consider both the structure and scale of the dataset**.
-
-K-Means produced a useful result, DBSCAN did not fit the dataset particularly well, and Agglomerative Clustering was computationally impractical on the complete population.
+The main result is that the player population splits into two broad profiles — more and less progressed/active — based on a combination of many features rather than any single variable. This also demonstrated that **more clusters isn't automatically a better result**: DBSCAN's 160 clusters were far less useful than K-Means' 2, once noise is accounted for. And an algorithm can be theoretically applicable to a problem while still being computationally impractical at scale, as Agglomerative Clustering showed here.
 
 #### Key Takeaways
 
-- P5 is the project's **unsupervised learning problem**.
-- The objective is to discover different player profiles based on their characteristics.
-- The dataset contains approximately **836,830 players and 30 clustering features**.
-- Features were standardized using `StandardScaler` because the algorithms rely on distances and the original variables operate on very different scales.
-- K-Means was evaluated for **K = 2–10** using a 50,000-player sample for Silhouette Score calculation.
-- **K = 2** achieved the best Silhouette Score of approximately **0.3926**.
-- The two clusters were relatively balanced and can be broadly interpreted as more progressed/active and less progressed/active player profiles.
-- DBSCAN produced **160 clusters**, but approximately **91.98% of players were classified as noise**, making it an unsuccessful approach for this dataset.
-- Agglomerative Clustering was not feasible on the complete dataset because of its extreme memory requirements.
-- PCA provided a useful visual representation of the clustering structure and highlighted the differences between K-Means and DBSCAN.
-- Unsupervised learning is more exploratory because there are no predefined labels telling the model what constitutes a good or bad group.
-- The experiment showed that discovering patterns can be more ambiguous than supervised prediction, but also more interesting because meaningful structures can emerge directly from the data.
+- P5 is the project's unsupervised problem: discovering player profiles with no predefined labels.
+- ~836,000 players, 30 clustering features, standardized with `StandardScaler`.
+- **K-Means (K = 2)** gave the best result: silhouette score **0.3926**, with relatively balanced clusters (404,225 / 432,605).
+- The two clusters broadly represent more-progressed/active and less-progressed/active player profiles — though not every feature (e.g. current trophies) follows that pattern.
+- **DBSCAN** found 160 clusters but classified **91.98%** of players as noise — not a useful result for this dataset.
+- **Agglomerative Clustering** wasn't feasible on the full dataset due to memory requirements (~2.55 TiB).
+- Unsupervised results need careful interpretation: without ground truth, "more clusters" or "more complex algorithm" doesn't imply a better result.
 
-## 📊 Results & Findings
+## 📈 Results Summary & Lessons Learned
 
-This section summarizes the main results obtained across the five machine learning problems, comparing the evaluated models and highlighting the most important findings and limitations.
+### Results at a Glance
 
-### P1 — Clan Member Role Classification
-
-The objective of this problem was to classify clan members into four roles: `member`, `admin`, `coLeader`, and `leader`.
-
-Three models were evaluated: Random Forest, XGBoost, and Logistic Regression.
-
-| Model | Accuracy | Weighted F1 | Macro F1 |
-|---|---:|---:|---:|
-| Random Forest | 0.5547 | 0.5459 | 0.4980 |
-| XGBoost | 0.5398 | 0.5345 | 0.4955 |
-| Logistic Regression | 0.4521 | 0.4624 | 0.4236 |
-
-Random Forest achieved the best overall performance according to accuracy and weighted F1. However, XGBoost achieved a higher F1-score for the `leader` class:
-
-| Model | Admin F1 | CoLeader F1 | Leader F1 | Member F1 |
-|---|---:|---:|---:|---:|
-| Random Forest | 0.4452 | 0.5104 | 0.3762 | 0.6603 |
-| XGBoost | 0.4389 | 0.4705 | 0.4185 | 0.6542 |
-| Logistic Regression | 0.4177 | 0.4002 | 0.3271 | 0.5494 |
-
-The results show that the `member` class was easier to identify than the leadership-related classes. The `leader` class remained difficult to classify, despite the use of class weighting.
-
-The main findings were:
-
-- Random Forest achieved the best overall performance.
-- XGBoost performed better for identifying the `leader` class.
-- Logistic Regression obtained the weakest results across the evaluated metrics.
-- The classification task is challenging because clan roles are not fully determined by the available features.
-- Overall accuracy alone does not represent performance equally across all classes.
-
----
-
-### P2 — Clan Rank Regression
-
-The objective of this problem was to predict clan rank using clan and member-related features.
-
-The experiments compared different regression models and evaluated the effect of including trophy-related features.
-
-| Model | Dataset | MAE | RMSE | R² |
-|---|---|---:|---:|---:|
-| XGBoost + Optuna | With trophies | 2.0537 | 3.3092 | 0.9134 |
-| Random Forest | With trophies | 2.0882 | 3.4162 | 0.9077 |
-| XGBoost + Optuna | Without trophies | 2.5287 | 3.8863 | 0.8805 |
-| Random Forest | Without trophies | 2.5836 | 3.9731 | 0.8751 |
-| Ridge Regression | Without trophies | 4.1836 | 5.5754 | 0.7541 |
-
-The best-performing configuration was XGBoost optimized with Optuna using the dataset containing trophy-related features.
-
-The comparison between datasets indicates that trophy-related features contributed useful information for predicting clan rank. Both XGBoost and Random Forest performed better when these features were included.
-
-The main findings were:
-
-- XGBoost with Optuna achieved the best overall regression results.
-- Including trophy-related features improved the performance of both tree-based models.
-- Random Forest obtained results close to XGBoost.
-- Ridge Regression performed worse than the evaluated tree-based models.
-- Clan size, league-related features, and Town Hall-level distributions were among the most relevant features in the analyzed models.
-- The results suggest that clan rank is strongly related to the structural and progression characteristics of a clan.
-
-Feature importance analysis showed that features such as `members`, `league_tier_id`, and `town_hall_level_clan_pct` were important across several model configurations. Their relative importance varied depending on the model and dataset.
-
----
-
-### P3 — Clan War Performance Regression
-
-The objective of this problem was to analyze the relationship between clan characteristics and historical war performance.
-
-The target variable was `war_success_rate`, calculated from the clan's historical war results. This problem was designed to analyze existing performance rather than predict the outcome of a future war.
-
-| Model | MAE | RMSE | R² |
-|---|---:|---:|---:|
-| Linear Regression | 0.1071 | 0.1366 | 0.0764 |
-| Random Forest + Randomized Search | 0.0986 | 0.1262 | 0.2113 |
-| Gradient Boosting + Optuna | 0.0980 | 0.1255 | 0.2206 |
-
-Gradient Boosting with Optuna achieved the best results among the evaluated models, although the overall R² score remained relatively low.
-
-The main findings were:
-
-- Gradient Boosting achieved the best performance in this experiment.
-- The improvement over Random Forest was relatively small.
-- Both tree-based models performed better than Linear Regression.
-- Clan rank was one of the most prominent features in the model.
-- The relatively low R² values indicate that the available features explain only part of the variation in historical war performance.
-- Increasing model complexity did not completely solve the limitations of the available data.
-
-This experiment highlighted the difference between obtaining a technically valid model and building a model with strong explanatory or predictive performance.
-
----
-
-### P4 — Clan Performance Classification
-
-The objective of this problem was to classify clans into three performance categories: `low`, `medium`, and `high`.
-
-The dataset was created separately from the war performance regression problem. Features directly derived from the target variable were excluded to reduce target leakage.
-
-The class distribution was approximately balanced:
-
-- `medium`: 33.42%
-- `low`: 33.32%
-- `high`: 33.25%
-
-Three models were evaluated: Random Forest, XGBoost, and a Multilayer Perceptron (MLP).
-
-| Model | Accuracy | Balanced Accuracy | Macro F1 |
-|---|---:|---:|---:|
-| Random Forest | 0.4811 | 0.4811 | 0.4773 |
-| XGBoost + Optuna | 0.4986 | 0.4985 | 0.4925 |
-| MLP + Optuna | 0.5037 | 0.5038 | 0.4962 |
-
-The MLP model achieved the best results across the reported metrics, although the performance remained moderate.
-
-Because the classes were approximately balanced, a random classifier would achieve an accuracy of around 33.3%. The evaluated models performed above this baseline, but the results still indicate that the classification task is difficult.
-
-The main findings were:
-
-- MLP with Optuna achieved the best overall results.
-- XGBoost performed slightly better than Random Forest.
-- The models performed above the approximate random baseline.
-- The `medium` class was more difficult to classify than the `low` and `high` classes.
-- Excluding target-derived war features helped avoid direct leakage from the target variable.
-- The available clan features do not completely explain the resulting performance categories.
-
----
-
-### P5 — Player Clustering
-
-The objective of this problem was to identify groups of players with similar progression and activity characteristics using unsupervised learning.
-
-The dataset contained approximately 836,000 players and 30 clustering features. The features were standardized before applying the clustering algorithms.
-
-#### K-Means
-
-K-Means was evaluated for values of K between 2 and 10. Silhouette scores were calculated using a sample of 50,000 players to reduce computational cost.
-
-The best configuration used two clusters:
-
-| Metric | Result |
-|---|---:|
-| Number of clusters | 2 |
-| Silhouette score | 0.3926 |
-| Cluster 0 size | 404,225 |
-| Cluster 1 size | 432,605 |
-
-The two clusters showed differences in progression and activity-related features.
-
-Cluster 0 generally contained players with higher values in features such as:
-
-- Capital contributions
-- Best trophies
-- War stars
-- Donations
-- Experience
-- Hero levels
-- Troop levels
-- Equipment levels
-- Town Hall level
-- Builder Hall level
-
-However, not every feature was higher in Cluster 0. For example, current trophies and some progression ratios showed different patterns between the clusters.
-
-Therefore, the clusters should be interpreted as broad groups of players with different progression and activity profiles rather than as strictly ordered skill levels.
-
-#### DBSCAN
-
-DBSCAN was also evaluated. The best tested configuration used an epsilon value of `0.3` and `min_samples=20`.
-
-| Metric | Result |
-|---|---:|
-| Number of clusters | 160 |
-| Noise points | 769,743 |
-| Noise percentage | 91.98% |
-| Silhouette score | 0.1373 |
-
-The high proportion of noise points and the low silhouette score indicated that this configuration was not a strong fit for the dataset.
-
-Agglomerative Clustering was not executed on the complete dataset because the estimated memory requirement was approximately 2.55 TiB.
-
-The main findings were:
-
-- K-Means with two clusters produced the most useful clustering result among the evaluated approaches.
-- The clusters mainly reflected differences in player progression and activity.
-- DBSCAN classified most observations as noise under the tested configuration.
-- The dataset size created significant computational constraints for some clustering algorithms.
-- Unsupervised results require careful interpretation because the discovered clusters do not necessarily represent explicit player skill categories.
-
----
+| Problem | Task | Best Model | Headline Result |
+|---|---|---|---|
+| **P1** | Role classification (4 classes) | Random Forest | 55.47% accuracy · 0.4980 macro F1 |
+| **P2** | Clan rank regression | XGBoost + Optuna | R² = 0.9134 (with trophies) / 0.8805 (without) |
+| **P3** | War success rate regression | Gradient Boosting + Optuna | R² = 0.2206 |
+| **P4** | War performance classification (3 classes) | MLP + Optuna | 50.37% accuracy · 0.4962 macro F1 |
+| **P5** | Player clustering | K-Means (K = 2) | Silhouette score = 0.3926 |
 
 ### Main Findings and Lessons Learned
 
-The experiments provided several general conclusions about the project and its machine learning workflow:
-
-- Tree-based models performed well across several supervised learning problems, particularly for clan rank regression.
-- The best model depended on the specific problem and evaluation metric.
-- A model with the best overall performance was not necessarily the best model for every individual class.
-- Feature selection and the availability of informative features had a significant effect on model performance.
-- Including trophy-related features improved clan rank regression results.
-- Some problems, such as historical war performance analysis, remained difficult despite testing more complex models and hyperparameter optimization.
-- Preventing target leakage was essential when transforming the war performance regression problem into a classification task.
-- Unsupervised learning revealed broad player progression patterns, but the resulting clusters required careful interpretation.
-- Dataset size and computational cost influenced the choice of evaluation strategies and algorithms.
-- The experiments demonstrated that machine learning performance depends not only on the algorithm but also on the quality, relevance, and limitations of the available data.
+- Tree-based models performed well across most supervised problems, particularly clan rank regression (P2).
+- The best model depended on the specific problem and metric — a model with the best overall performance wasn't necessarily best for every class (XGBoost beat Random Forest on P1's `leader` F1-score despite Random Forest's higher overall accuracy).
+- Feature availability and selection had a significant effect on performance; including trophy-related features clearly improved P2's results.
+- Some problems — notably P3's historical war-performance analysis — remained difficult to model accurately even after testing more complex models and hyperparameter optimization.
+- Reformulating a difficult regression problem as classification (P3 → P4) made the underlying signal more tractable to learn.
+- Preventing target leakage was essential when building P4 from P3's underlying data.
+- Unsupervised learning (P5) revealed broad player progression patterns, but the resulting clusters required careful interpretation — more clusters (DBSCAN) did not mean a better result than fewer (K-Means).
+- Dataset size and computational cost directly shaped the evaluation strategy and choice of algorithms, particularly in P5.
+- Overall, model performance depended as much on the quality, relevance, and limitations of the available data as on the choice of algorithm.
 
 ## 🔬 Machine Learning Engineering
 
-Although the project is primarily focused on machine learning experimentation, it also introduces several machine learning engineering practices to make the experiments easier to reproduce, compare and analyze.
-
-The engineering layer is intentionally lightweight. It is not designed as a production MLOps system, but as a practical and reproducible experimentation workflow.
+The engineering layer is intentionally lightweight — not a production MLOps system, but a practical, reproducible experimentation workflow.
 
 ### Experiment Tracking with MLflow
 
-**MLflow** has been part of the project from the beginning and became one of the most useful components of the entire workflow.
-
-Instead of treating each training run as an isolated experiment, MLflow provides a centralized way to record what was done and compare the results afterwards.
-
-The experiments track:
+**MLflow** has been part of the project from the start and is one of its most useful components — instead of treating every training run as an isolated experiment, it provides a centralized way to record what was done and compare results afterward. For every experiment, it tracks:
 
 - Parameters
 - Metrics
@@ -1773,9 +676,7 @@ The experiments track:
 - Target information
 - Dataset split configuration
 
-This makes it possible to inspect an experiment without having to remember exactly which configuration was used during training.
-
-The local MLflow setup uses **SQLite as the backend store** and local artifact storage:
+The local setup uses **SQLite** as the backend store and local artifact storage:
 
 ```text
 MLflow Server
@@ -1787,52 +688,19 @@ MLflow Server
               └── mlflow/mlruns/
 ```
 
-MLflow runs locally through:
-
-```text
-127.0.0.1:5000
-```
+MLflow runs locally at `127.0.0.1:5000`.
 
 ### Dataset Context
 
-One particularly useful part of the tracking system was recording the **dataset context** for every experiment.
-
-Although all five problems originate from the same raw Clash of Clans data, they do not use the same final dataset.
-
-Each problem has its own:
-
-- Feature engineering
-- Selected features
-- Target
-- Dataset construction process
-
-Recording this information in MLflow makes it possible to understand exactly which dataset and target were used for each experiment.
-
-This becomes particularly important when comparing experiments across P1–P5, where datasets may originate from the same raw data but represent fundamentally different machine learning problems.
-
-The dataset split configuration is also recorded. This provides additional context when reviewing results and makes it possible to verify how the data was divided during training.
+Although all five problems share the same raw data, they don't share a final dataset — each has its own feature engineering, selected features, target, and construction process. Recording this **dataset context** in MLflow, along with the dataset split configuration, makes it possible to know exactly which dataset and target produced a given experiment's results — important when comparing across P1–P5, which look similar on the surface but represent fundamentally different problems.
 
 ### Reproducibility
 
-The experiments consistently use:
-
-```python
-random_state = 42
-```
-
-where applicable.
-
-The same general split configuration is therefore maintained across the experiments, while the split information itself is also logged in MLflow.
-
-This provides a consistent experimental setup and makes it easier to reproduce and compare results.
-
-The project is therefore designed so that the machine learning experiments can be executed again on another machine using the same code, datasets and configuration.
+Experiments consistently use `random_state = 42` where applicable, with the split configuration also logged in MLflow. This keeps the experimental setup consistent and makes it possible to reproduce results on another machine using the same code, data, and configuration.
 
 ### Reusable MLflow Tracking Layer
 
-The project uses a reusable layer around MLflow to avoid having to implement the same tracking logic independently for every problem.
-
-The tracking functionality covers operations such as:
+A shared tracking layer avoids reimplementing the same logging logic for every problem, covering:
 
 ```text
 configure_tracking
@@ -1844,66 +712,25 @@ log_metrics
 log_model_and_artifacts
 ```
 
-This provides a common tracking workflow across the different supervised and unsupervised experiments.
-
-As new models were introduced, the tracking layer was also extended when necessary. For example, support for the **MLP** experiment was integrated into the existing MLflow workflow.
-
-Some issues with experiment metadata were also identified and corrected during development, such as ensuring that split configuration and dataset context were correctly stored in the early experiments.
+This layer was extended as needed — for example, to support the **MLP** experiment in P4 — and some early metadata gaps (split configuration and dataset context not being fully logged) were identified and corrected during development.
 
 ### Model Logging
 
-During the initial stages of the project, models were generally logged during each experiment run.
-
-As the project introduced **Optuna** for hyperparameter optimization, the workflow evolved.
-
-Instead of logging every intermediate model generated during the optimization process, the final selected model was logged after the optimization process had identified the best configuration.
-
-This reduced unnecessary model artifacts while keeping the final model associated with the corresponding experiment.
+Early on, models were logged for every experiment run. Once **Optuna** was introduced, this changed: rather than logging every intermediate model from the optimization process, only the final selected model is logged after the best configuration is found — reducing unnecessary artifacts while keeping the final model tied to its experiment.
 
 ### Model Loading and Feature Consistency
 
-One practical issue encountered during the project involved loading a trained XGBoost model for later analysis.
-
-One model had been trained using a different number of features than the feature set expected when the results were later generated. This resulted in a feature mismatch when attempting to load and use the model.
-
-The model was subsequently retrained with the correct feature set, resolving the issue.
-
-This highlighted an important practical aspect of machine learning engineering:
-
-> **A trained model is not independent from the feature schema used to train it.**
-
-The model, its expected features and the dataset used during inference need to remain aligned.
-
-MLflow model information and signatures were also used to help validate this consistency.
+A trained model isn't independent of the feature schema used to train it. P2 surfaced this directly: a saved XGBoost model was reloaded with a different feature set than the one it was trained on (see *P2 — Clan Rank Regression*, above, for the full story). The fix — retraining on the correct, aligned features and validating consistency through MLflow's model signatures and stored feature metadata — became standard practice for the rest of the project.
 
 ### Hyperparameter Optimization with Optuna
 
-As the project evolved, **Optuna** was introduced to perform more systematic hyperparameter optimization.
+Early experiments relied more on manually adjusting parameters and observing the effect — useful for building intuition about what each hyperparameter actually controls, rather than treating models as black boxes. **Optuna** was introduced later for systematic search, evaluating configurations and progressively narrowing in on better-performing regions of the hyperparameter space. P4, for instance, used **50 trials** for both XGBoost and the MLP specifically to test whether a larger optimization budget than used elsewhere would produce a meaningful improvement.
 
-Before using Optuna, some experiments relied more heavily on manually changing parameters and observing how the models behaved.
-
-This was useful from a learning perspective because changing parameters manually made it easier to understand how different hyperparameters affected the models rather than treating the algorithm as a complete black box.
-
-Optuna introduced a more systematic search process.
-
-Instead of manually selecting every configuration, Optuna evaluates different configurations and progressively searches for better-performing regions of the hyperparameter space.
-
-For example, P4 used **50 trials** for both XGBoost and MLP to investigate whether increasing the optimization budget could produce meaningful improvements.
-
-Optuna therefore served two purposes in the project:
-
-1. **Practical optimization** — efficiently searching a large hyperparameter space.
-2. **Understanding optimization behaviour** — observing how different configurations affected model performance and trying to understand why certain configurations performed better.
-
-This distinction was important during the project. Hyperparameter optimization is most useful when the practitioner understands what the hyperparameters control and can interpret the behaviour observed during the search, rather than simply treating the optimization process as a black box.
+Optuna served two purposes: **practical optimization** (efficiently searching a large space) and **understanding optimization behavior** (seeing how configurations affected performance and why). Automated search was most useful when paired with an understanding of what was actually being optimized, rather than used as a black box.
 
 ### Engineering Philosophy
 
-The engineering layer of the project is deliberately simple.
-
-There is currently no production deployment, cloud infrastructure, Docker/Kubernetes stack, CI/CD pipeline or model monitoring system.
-
-Instead, the focus is on establishing the foundations required for **reproducible machine learning experimentation**:
+The focus is on making experiments traceable, comparable, and reproducible — not on production infrastructure (see *Limitations & Technical Challenges* for the full picture of what is and isn't implemented):
 
 ```text
 Raw Data
@@ -1927,27 +754,17 @@ MLflow
    └── Split Configuration
 ```
 
-For the scope of this project, this lightweight approach was sufficient to make the experiments traceable, comparable and reproducible.
+For this project's scope, that lightweight approach was enough to make experiments traceable, comparable, and reproducible.
 
 ### What I Learned
 
-One of the main lessons from the project was how useful experiment tracking becomes once the number of experiments starts increasing.
-
-MLflow made it possible to quickly inspect metrics, visualize experiments, compare configurations and identify inconsistencies without manually keeping track of every training run.
-
-This became particularly valuable as the project grew from simple model experiments into a collection of five different machine learning problems.
-
-The project also showed that **machine learning engineering is not only about deploying models**. Even before deployment, keeping datasets, features, parameters, metrics and models organized has a significant impact on the quality and reproducibility of the experimentation process.
-
-Similarly, Optuna demonstrated the value of systematic hyperparameter optimization while reinforcing that automated optimization works best when combined with an understanding of the models and hyperparameters being optimized.
+Experiment tracking becomes far more valuable once the number of experiments grows — MLflow made it possible to inspect metrics, compare configurations, and catch inconsistencies without manually keeping track of every run, which mattered as the project grew from simple experiments into five distinct ML problems. It also reinforced that **ML engineering isn't only about deployment** — keeping datasets, features, parameters, metrics, and models organized has a real impact on reproducibility even before deployment ever comes up. Similarly, Optuna showed the value of systematic hyperparameter search, best combined with an actual understanding of the models and hyperparameters involved.
 
 ## ⚙️ Installation
 
 ### Requirements
 
-The project requires **Python 3.10+** and uses a virtual environment to isolate the project dependencies.
-
-Clone the repository and create a virtual environment:
+The project requires **Python 3.10+** and a virtual environment.
 
 ```powershell
 git clone https://github.com/oteope/clash-of-clans-ml-lab.git
@@ -1957,14 +774,12 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 ```
 
-Install the project dependencies:
-
 ```powershell
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-The main dependencies include:
+Main dependencies:
 
 - **MLflow** — experiment tracking and model management
 - **pandas / NumPy** — data processing
@@ -1978,28 +793,18 @@ The main dependencies include:
 
 ### Clash of Clans API
 
-The data collection pipeline requires access to the **Clash of Clans Developer API**.
-
-The crawler uses an API key and the expected IP address configured as environment variables.
-
-Create a `.env` file in the project root:
+Data collection requires a Clash of Clans Developer API key and your registered IP address, set as environment variables in a `.env` file in the project root:
 
 ```env
 CLASH_API_KEY=your_api_key
 CLASH_API_IP=your_expected_ip
 ```
 
-These credentials are required only for running the data collection pipeline. They should **never be committed to the repository**.
+These are only needed to run the data-collection pipeline, and should never be committed to the repository.
 
 ### Datasets
 
-The final `.parquet` datasets are not included in the repository.
-
-They are excluded through `.gitignore` because of their size. Therefore, a fresh clone does not contain the processed datasets required by the ML pipelines.
-
-To reproduce the datasets from scratch, the data pipeline must be executed using a valid Clash of Clans API configuration.
-
-The general process is:
+The processed `.parquet` datasets are excluded from the repository via `.gitignore` because of their size, so a fresh clone won't include them. Reproducing them requires running the full pipeline with a valid API configuration:
 
 ```text
 Clash of Clans API
@@ -2013,13 +818,11 @@ Feature Engineering
 Parquet Datasets
 ```
 
-The raw data and generated datasets are stored locally under the project's `data/` directory.
+Raw data and generated datasets are stored locally under `data/`.
 
 ### MLflow
 
-The project uses a **local MLflow Tracking Server** with SQLite as the backend store.
-
-After installing the dependencies, start the MLflow server:
+The project uses a local MLflow Tracking Server backed by SQLite. After installing dependencies, start it with:
 
 ```powershell
 mlflow server `
@@ -2029,27 +832,15 @@ mlflow server `
   --port 5000
 ```
 
-The tracking server will be available at:
-
-```text
-http://127.0.0.1:5000
-```
-
-Configure the tracking URI in the terminal running the ML pipeline:
+The UI is then available at `http://127.0.0.1:5000`. Point the ML pipeline at it with:
 
 ```powershell
 $env:MLFLOW_TRACKING_URI = "http://127.0.0.1:5000"
 ```
 
-Alternatively, the project can use its local SQLite configuration through the tracking utilities when no external tracking URI is provided.
-
-For a more detailed explanation of the MLflow setup, see the **Machine Learning Engineering** section.
+If no external tracking URI is set, the project's tracking utilities fall back to the local SQLite configuration. See *Machine Learning Engineering*, above, for more on the MLflow setup.
 
 ## 🚀 Usage
-
-The project is executed primarily through the command line.
-
-The general workflow is:
 
 ```text
 Data Extraction
@@ -2067,19 +858,17 @@ MLflow Results
 
 ### 1. Extract Raw Data
 
-After configuring the Clash of Clans API credentials, run the main extraction pipeline:
+With API credentials configured:
 
 ```powershell
 python src/extraction/main_extraction.py
 ```
 
-The extracted raw data is stored locally under the `data/raw/` directory.
+Extracted data is stored under `data/raw/`.
 
 ### 2. Build the Dataset
 
-Each machine learning problem has its own feature engineering and dataset construction pipeline.
-
-The corresponding scripts are located under:
+Each problem has its own feature engineering and dataset-construction pipeline under:
 
 ```text
 src/features/
@@ -2090,41 +879,21 @@ src/features/
 └── problem5/
 ```
 
-After extracting the raw data, run the dataset builder corresponding to the problem you want to work with.
-
-For example:
+Run the builder for the problem you want, e.g.:
 
 ```powershell
 python src/features/problem1/<build_problem1_name>_dataset.py
 ```
 
-The same process applies to the other problems by using their corresponding `problem2`, `problem3`, `problem4` or `problem5` feature pipeline.
-
-Each pipeline performs the feature engineering required for its specific machine learning problem and generates the corresponding Parquet dataset.
+The same pattern applies to `problem2` through `problem5`.
 
 ### 3. Start MLflow
 
-Before running the machine learning experiments, start the local MLflow tracking server:
-
-```powershell
-mlflow server `
-  --backend-store-uri sqlite:///mlflow/mlflow.db `
-  --default-artifact-root ./mlflow/mlruns `
-  --host 127.0.0.1 `
-  --port 5000
-```
-
-Keep the MLflow server running while executing experiments.
-
-The MLflow UI will be available at:
-
-```text
-http://127.0.0.1:5000
-```
+Start the local tracking server as described in *Installation*, and keep it running while you execute experiments. The UI is available at `http://127.0.0.1:5000`.
 
 ### 4. Run Machine Learning Experiments
 
-The machine learning experiments are organized by problem under:
+Experiments are organized by problem under:
 
 ```text
 src/models/
@@ -2135,29 +904,19 @@ src/models/
 └── P5/
 ```
 
-Each problem contains its own training, optimization and evaluation scripts.
-
-Depending on the experiment, model parameters can either be configured manually before execution or optimized automatically using **Optuna**.
-
-Run the corresponding experiment from the terminal:
+Depending on the experiment, hyperparameters are set manually or optimized with **Optuna**:
 
 ```powershell
 python src/models/P1/<experiment_script>.py
 ```
 
-The same structure applies to `P2`, `P3`, `P4` and `P5`.
-
-Experiments that use Optuna perform the configured hyperparameter search automatically before logging the selected final model and results to MLflow.
+The same pattern applies to `P2` through `P5`. Optuna-based experiments run their search automatically, then log the final selected model and results to MLflow.
 
 ### 5. Analyze Results
 
-After running the experiments, the corresponding results scripts can be used to analyze the trained models and generate metrics, visualizations and comparisons.
-
-Each problem has its own results workflow. **P5 is an exception:** executing the P5 pipeline also produces problem-specific results, but the project additionally includes a **global results analysis** that consolidates the main results
+Each problem has its own results workflow. **P5 is the exception**: running its pipeline also produces problem-specific results, and the project additionally includes a global results analysis that consolidates the main findings across all five problems.
 
 ## 📁 Repository Structure
-
-The repository is organized into separate layers for data extraction, feature engineering, machine learning experiments, result analysis and experiment tracking.
 
 ```text
 clash-of-clans-ml-lab/
@@ -2205,12 +964,18 @@ clash-of-clans-ml-lab/
 │   ├── processing/
 │   │   └── build_normalized_tables.py
 │   │
-│   └── results/
-│       ├── P1/
-│       ├── P2/
-│       ├── P3/
-│       ├── P4/
-│       └── P5/
+│   ├── results/
+│   │   ├── P1/
+│   │   ├── P2/
+│   │   ├── P3/
+│   │   ├── P4/
+│   │   └── P5/
+│   │
+│   ├── results_p1.py
+│   ├── results_p2.py
+│   ├── results_p3.py
+│   ├── results_p4.py
+│   └── results_p5.py
 │
 ├── tests/
 │   ├── test_api_client.py
@@ -2225,12 +990,6 @@ clash-of-clans-ml-lab/
 │   ├── test_processing.py
 │   └── test_search_config.py
 │
-├── src/results_p1.py
-├── src/results_p2.py
-├── src/results_p3.py
-├── src/results_p4.py
-├── src/results_p5.py
-│
 ├── .gitignore
 ├── LICENSE
 ├── MLFLOW_SETUP.md
@@ -2242,25 +1001,23 @@ clash-of-clans-ml-lab/
 
 | Directory / File | Description |
 |---|---|
-| `src/extraction/` | Handles data collection from the Clash of Clans Developer API, including API communication, search configuration and local storage. |
-| `src/audit/` | Contains tools for auditing the collected raw data and checking its structure and quality. |
-| `src/processing/` | Contains general-purpose data processing utilities used before the problem-specific ML pipelines. |
-| `src/features/` | Contains the feature engineering and dataset construction pipelines for each machine learning problem. |
-| `src/models/` | Contains the machine learning experiments, organized by problem (`P1`–`P5`). |
-| `src/results/` | Stores generated result artifacts for each problem, including metrics, plots, comparisons and summaries. |
-| `src/results_p*.py` | Global result-analysis scripts for each problem. |
-| `mlflow_tracking/` | Contains reusable utilities for configuring MLflow, managing experiments and logging parameters, metrics, models and artifacts. |
-| `mlflow/` | Contains the local MLflow SQLite database and tracking data generated during experimentation. These files are created locally and are not included in the repository. |
-| `notebooks/eda/` | Contains the Exploratory Data Analysis notebooks for P1–P5. |
-| `tests/` | Contains automated tests covering extraction, dataset auditing, feature engineering, processing and MLflow functionality. |
+| `src/extraction/` | Data collection from the Clash of Clans Developer API — API communication, search configuration, and local storage. |
+| `src/audit/` | Tools for auditing the collected raw data's structure and quality. |
+| `src/processing/` | General-purpose data processing used before the problem-specific pipelines. |
+| `src/features/` | Feature engineering and dataset construction for each problem. |
+| `src/models/` | Machine learning experiments, organized by problem (`P1`–`P5`). |
+| `src/results/` | Generated result artifacts per problem — metrics, plots, comparisons, summaries. |
+| `src/results_p*.py` | Global result-analysis scripts, one per problem. |
+| `mlflow_tracking/` | Reusable utilities for configuring MLflow and logging experiments, parameters, metrics, models, and artifacts. |
+| `mlflow/` | Local MLflow SQLite database and tracking data, generated locally and not included in the repository. |
+| `notebooks/eda/` | Exploratory Data Analysis notebooks for P1–P5. |
+| `tests/` | Automated tests covering extraction, dataset auditing, feature engineering, processing, and MLflow functionality. |
 | `MLFLOW_SETUP.md` | Detailed instructions for configuring and running the local MLflow tracking server. |
-| `requirements.txt` | Python dependencies required by the project. |
+| `requirements.txt` | Python dependencies. |
 
 ### Problem Organization
 
-The project deliberately separates **feature engineering** from **model experimentation**.
-
-For each problem, the workflow follows the same general structure:
+Feature engineering is kept separate from model experimentation for every problem:
 
 ```text
 src/features/problemX/
@@ -2276,204 +1033,79 @@ src/results/PX/
 src/results_pX.py
 ```
 
-This separation allows the generated datasets to be used across different models and experiments while keeping feature engineering independent from model training.
+This lets each generated dataset be reused across different models and experiments while keeping feature engineering independent of training.
 
 ### Results Organization
 
-Each problem has a dedicated directory under `src/results/` containing its generated result artifacts.
-
-Depending on the problem, these may include:
-
-- **Metric comparisons**
-- **Confusion matrices**
-- **Actual vs. predicted plots**
-- **Residual analysis**
-- **Feature importance**
-- **Cluster profiles**
-- **Evaluation summaries**
-- **CSV and JSON result files**
-
-P5 additionally contains experiment-specific results for **K-Means** and **DBSCAN**, while `src/results_p5.py` provides the main consolidated analysis for the problem.
+Each problem has a dedicated directory under `src/results/` holding its result artifacts — metric comparisons, confusion matrices, actual-vs-predicted plots, residual analysis, feature importance, cluster profiles, evaluation summaries, and CSV/JSON result files, depending on the problem. **P5** additionally has experiment-specific results for K-Means and DBSCAN, and `src/results_p5.py` provides the main consolidated analysis.
 
 ## ⚠️ Limitations & Technical Challenges
 
-Building the project around real Clash of Clans data introduced several limitations that affected both the data collection process and the machine learning experiments.
-
-Rather than hiding these constraints, they became part of the project and influenced several of the design decisions described throughout the repository.
+Building around real Clash of Clans data introduced constraints that shaped several design decisions throughout the project. Rather than hide them, they're documented here as part of the project's honest scope.
 
 ### Data Collection Constraints
 
-The Clash of Clans Developer API imposes a relatively restrictive request rate. During data collection, only approximately **6–7 API requests per minute** could be performed reliably.
-
-This made collecting a large and diverse dataset a slow process.
-
-To improve the diversity of the collected data, the crawler does not repeatedly query the same generic searches. Instead, it generates combinations of different clan filters, including:
-
-- Clan member count
-- Clan level
-- Clan points
-
-The resulting search space contains **dozens of different filter combinations**, which are progressively explored through the crawler's search history.
-
-This approach does not remove the API rate limitation, but it makes each request more useful by increasing the probability of discovering clans and players from different parts of the game.
+The Clash of Clans Developer API allows only about **6–7 requests per minute**, making large-scale data collection slow. The crawler mitigates this by generating dozens of different clan-filter combinations (see *Data Collection*, above) rather than repeating the same generic queries — this doesn't remove the rate limit, but it makes each request more likely to surface new clans and players.
 
 ### P1 — Class Imbalance
 
-The **Clan Member Role Classification** problem contains an inherent class imbalance that cannot be completely solved through additional data collection.
-
-Each clan can only have a limited number of members in leadership roles, while the majority of players are regular members. In particular, there can only be **one leader per clan**, meaning that collecting more clans increases the number of leader examples only proportionally to the number of clans.
-
-This makes the leader class fundamentally much smaller than the other classes.
-
-To account for this imbalance during training, **class weighting** was used to give greater importance to the underrepresented classes.
-
-This is an important limitation of the problem itself rather than simply a consequence of having too little data.
+Each clan has only **one leader**, so collecting more clans increases leader examples only in proportion to the number of clans — the `leader` class is fundamentally smaller than the others, not just under-sampled. **Class weighting** was used to compensate during training, but this is a limitation of the problem itself, not simply of data volume.
 
 ### P3 — Historical Performance vs. Future Prediction
 
-P3 was initially designed around the relationship between clan characteristics and **war performance**.
-
-The final target, `war_success_rate`, represents the clan's existing war record. Therefore, the experiment investigates how much of the observed performance can be explained by the available clan characteristics, rather than predicting genuinely unseen future performance.
-
-I investigated the possibility of turning the problem into a true future-performance prediction task. This would require collecting clans with **public war history**, recording their current state, waiting for a sufficiently long period of new war activity, and then using the newly collected information as future outcomes.
-
-This approach would have required waiting roughly **two months** before obtaining enough new observations for the complete modeling process. In addition, only a limited number of clans had the required public war history available.
-
-Given the scope of the project and the resulting reduction in the available population, I decided not to pursue this approach.
-
-Therefore, P3 should be interpreted as an analysis of **historical/current war performance**, not as a validated forecasting system for future wars.
+P3's target reflects each clan's *existing* war record, not a genuinely unseen future outcome. A true future-prediction setup was considered — recording clans' current state, waiting for new war activity, and using it as a future outcome — but this would have required roughly **two months** of waiting, and only a limited number of clans had the required public war history available. Given the project's scope and the resulting drop in usable clans, this approach wasn't pursued. P3 should be read as an analysis of **historical/current** war performance, not a validated forecasting system.
 
 ### P5 — Computational Constraints
 
-The clustering problem was built using approximately **836,000 players**, making some unsupervised learning algorithms considerably more expensive than their supervised counterparts.
-
-#### Silhouette Analysis
-
-Evaluating the silhouette score on the complete dataset for every possible number of clusters would have been computationally expensive.
-
-To keep the experiment practical, a **50,000-player sample** was used for silhouette evaluation when comparing K-Means configurations.
-
-Using the complete dataset would have made the experiment take approximately **16 hours**, which was disproportionate to the objective of the experiment.
-
-The full dataset was still used for the final K-Means clustering once the number of clusters had been selected.
-
-#### DBSCAN
-
-DBSCAN did not behave as expected on the player dataset.
-
-Instead of producing a small number of meaningful player groups, the best configuration generated **a very large number of small clusters and a very high proportion of noise points**.
-
-The resulting clustering was not useful for the intended analysis, making DBSCAN a good example of an algorithm that can perform poorly when its assumptions do not match the structure of the dataset.
-
-#### Agglomerative Clustering
-
-Agglomerative clustering presented a more fundamental computational limitation.
-
-Running the algorithm on the complete player dataset would require an estimated **2.55 TiB of memory** for the necessary pairwise computations.
-
-Reducing the dataset manually to a smaller subset was considered, but constructing a representative sample that simultaneously preserved the wide range of player characteristics and maintained a reasonable balance across the different aspects of the game would have been difficult.
-
-Since this additional experiment was not essential to the main objectives of the project, the full Agglomerative experiment was not executed.
-
-The implementation remains in the repository as an additional experiment, but its full-scale execution is intentionally not part of the standard workflow.
+- **Silhouette analysis:** evaluating every candidate value of K on the full ~836,000-player dataset would have taken roughly **16 hours** — disproportionate to the goal — so a **50,000-player sample** was used for silhouette scoring. The full dataset was still used for the final K-Means clustering once K was chosen.
+- **DBSCAN** produced a large number of small clusters and classified most of the dataset as noise — a clear example of an algorithm whose assumptions didn't match the data at this scale.
+- **Agglomerative Clustering** would require an estimated **2.55 TiB of memory** on the full dataset. A smaller, manually selected subset was considered but rejected, since constructing one that stayed representative of the population's range of player characteristics was more effort than the experiment's value justified.
 
 ### MLflow Configuration Challenges
 
-MLflow also introduced some practical problems during development.
-
-At one point, incorrect MLflow server commands caused multiple empty `mlflow.db` files and tracking directories to be generated in different locations.
-
-The problem was ultimately caused by incorrect command syntax and configuration rather than by MLflow itself.
-
-This highlighted a simple but important lesson when working with local experiment tracking: **the tracking URI, backend store and artifact location must be configured consistently**.
-
-For this reason, the project keeps the MLflow startup command explicitly documented rather than relying on manually reconstructing it each time.
+Incorrect MLflow server commands at one point created multiple empty `mlflow.db` files and tracking directories in different locations — a configuration issue, not a problem with MLflow itself. The lesson: tracking URI, backend store, and artifact location need to be configured consistently, which is why the project keeps its MLflow startup command explicitly documented rather than reconstructed from memory each time.
 
 ### Project Scope
 
-This project is intentionally **not a production MLOps system**.
+This is intentionally **not a production MLOps system** — it's a serious personal project focused on exploring machine learning in depth and introducing real ML engineering practices, not on replicating a full production platform.
 
-It is one of my more serious personal machine learning projects, but its primary objective is to explore machine learning in depth while introducing some real ML Engineering practices.
+**Included:** extensive EDA, dataset construction and feature engineering, multiple supervised and unsupervised algorithms, model comparison, hyperparameter optimization, evaluation metrics, result visualization, MLflow experiment tracking, and reproducible experiment configuration.
 
-The project includes:
-
-- Extensive exploratory data analysis
-- Dataset construction and feature engineering
-- Multiple supervised and unsupervised algorithms
-- Model comparison
-- Hyperparameter optimization
-- Evaluation metrics
-- Result visualization
-- Experiment tracking with MLflow
-- Reproducible experiment configuration
-
-However, it does not attempt to implement a complete production infrastructure.
-
-For example, the project does not currently include:
-
-- Docker-based deployment
-- Kubernetes
-- CI/CD
-- Cloud infrastructure
-- Model serving
-- Production monitoring
-- Automated retraining
-
-The scope was deliberately kept focused on **understanding and experimenting with machine learning while introducing MLflow as the main MLOps component**, rather than trying to simulate an entire production ML platform.
+**Not currently included:** Docker-based deployment, Kubernetes, CI/CD, cloud infrastructure, model serving, production monitoring, or automated retraining (see *Roadmap*, below, for possible future directions).
 
 ### What These Limitations Taught Me
 
-These constraints were also useful from a learning perspective.
-
-The project showed that machine learning is not only about selecting an algorithm and optimizing its parameters. Real projects are also constrained by:
-
-- Data availability
-- API limitations
-- Class distributions
-- Target definition
-- Computational resources
-- Algorithmic assumptions
-- Experiment management
-
-Several experiments produced results that were weaker or less useful than initially expected. Rather than treating this as a failure of the project, these cases became part of the analysis and helped demonstrate where particular approaches were appropriate — and where they were not.
+Machine learning isn't only about choosing an algorithm and tuning it — real projects are also shaped by data availability, API limits, class distributions, target definitions, computational resources, algorithmic assumptions, and experiment management. Several experiments here (P3's regression, DBSCAN, Agglomerative Clustering) produced weaker or less-usable results than expected. Rather than treating that as failure, those cases became part of the analysis — showing where a given approach was appropriate, and where it wasn't.
 
 ## 🗺️ Roadmap
 
-The project currently provides a complete machine learning laboratory workflow, with several possible directions for future development.
+The project currently covers a complete machine learning laboratory workflow. Possible future directions include:
 
-Potential improvements include:
-
-- Expand the dataset with additional clans and players as more data becomes available.
-- Improve the data collection strategy to increase population diversity.
-- Explore additional feature engineering strategies for the existing problems.
-- Experiment with additional machine learning algorithms and modeling approaches.
-- Investigate more robust approaches to **player clustering**.
-- Explore a true **future war-performance prediction** setup if enough public war-history data becomes available.
-- Improve the project's ML Engineering layer with additional automation and reproducibility.
-- Potentially introduce **Docker, CI/CD, model serving and cloud infrastructure** in a future iteration.
+- Expanding the dataset with additional clans and players.
+- Improving the data collection strategy to increase population diversity.
+- Exploring additional feature engineering strategies for the existing problems.
+- Testing additional algorithms and modeling approaches.
+- Investigating more robust approaches to player clustering (P5).
+- Building a true future war-performance prediction setup, if enough public war-history data becomes available.
+- Strengthening the ML engineering layer with more automation and reproducibility.
+- Potentially introducing Docker, CI/CD, model serving, and cloud infrastructure in a future iteration.
 
 ## 📚 References
 
-The project is based primarily on the official documentation of the tools, libraries and data source used throughout the pipeline.
-
-- **Clash of Clans Developer API** — Official API documentation used for data collection.
-- **MLflow Documentation** — Experiment tracking, model logging, parameters, metrics and artifacts.
-- **scikit-learn Documentation** — Machine learning algorithms, preprocessing, evaluation metrics and clustering.
-- **XGBoost Documentation** — Gradient boosting models used in the supervised learning experiments.
-- **Optuna Documentation** — Hyperparameter optimization used in P2, P3 and P4.
-- **Pandas Documentation** — Data manipulation and dataset processing.
-- **NumPy Documentation** — Numerical computing and array operations.
-- **PyArrow Documentation** — Parquet dataset storage and processing.
-- **Matplotlib Documentation** — Data visualization and result plots.
-- **Seaborn Documentation** — Statistical visualization used during exploratory data analysis.
-- **aiohttp Documentation** — Asynchronous HTTP requests used by the data collection pipeline.
-- **python-dotenv Documentation** — Environment variable management for API configuration.
+- **Clash of Clans Developer API** — official documentation used for data collection.
+- **MLflow** — experiment tracking, model logging, parameters, metrics, and artifacts.
+- **scikit-learn** — machine learning algorithms, preprocessing, evaluation, and clustering.
+- **XGBoost** — gradient boosting models used across the supervised problems.
+- **Optuna** — hyperparameter optimization, used in P2, P3, and P4.
+- **pandas** / **NumPy** — data manipulation and numerical computing.
+- **PyArrow** — Parquet dataset storage and processing.
+- **Matplotlib** / **Seaborn** — visualization and exploratory data analysis.
+- **aiohttp** — asynchronous HTTP requests for data collection.
+- **python-dotenv** — environment variable management.
 
 ## 📄 License
 
-This project is licensed under the **MIT License**.
-
-See the [`LICENSE`](LICENSE) file for the complete license text.
+This project is licensed under the **MIT License**. See [`LICENSE`](LICENSE) for the full text.
 
 ## 👤 Author
 
@@ -2481,4 +1113,4 @@ See the [`LICENSE`](LICENSE) file for the complete license text.
 
 Machine Learning / MLOps enthusiast focused on building practical machine learning systems and understanding the engineering behind them.
 
-GitHub: **[Oteope](https://github.com/oteope)**
+GitHub: [Oteope](https://github.com/oteope)
