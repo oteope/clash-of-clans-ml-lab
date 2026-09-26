@@ -559,7 +559,7 @@ The final comparison produced the following results:
 | XGBoost | 0.5398 | 0.5345 | 0.4955 | 0.4389 | 0.4705 | **0.4185** | 0.6542 |
 | Logistic Regression | 0.4521 | 0.4624 | 0.4236 | 0.4177 | 0.4002 | 0.3271 | 0.5494 |
 
-The **Random Forest** achieved the best overall performance according to accuracy,
+The **Random Forest** achieved the best overall performance according to accuracy.
 
 ### P2 — Clan Rank Regression
 
@@ -696,9 +696,9 @@ Ridge Regression achieved:
 
 | Metric | Ridge Regression |
 |---|---:|
-| MAE | 4.1836 |
-| RMSE | 5.5754 |
-| R² | 0.7541 |
+| MAE | 3.96 |
+| RMSE | 5.293 |
+| R² | 0.77 |
 
 The difference between the two models was relatively small, but XGBoost achieved the strongest overall results.
 
@@ -779,9 +779,7 @@ This helps explain why both **Town Hall-related features** and **trophy-related 
 
 #### Feature Importance
 
-A feature-importance analysis is planned as part of the refactoring of the P2 results analysis.
-
-The objective will be to analyze which variables contributed most to the predictions, particularly for the optimized XGBoost models.
+The feature-importance analysis compares the contribution of the most important variables across the four models.
 
 ![P2 feature importance](path/to/p2_feature_importance.png)
 
@@ -1546,11 +1544,212 @@ K-Means produced a useful result, DBSCAN did not fit the dataset particularly we
 - Unsupervised learning is more exploratory because there are no predefined labels telling the model what constitutes a good or bad group.
 - The experiment showed that discovering patterns can be more ambiguous than supervised prediction, but also more interesting because meaningful structures can emerge directly from the data.
 
-## 📈 Results & Findings
+## 📊 Results & Findings
 
-> **Note:** This section will be completed once all experiments and results have been fully reviewed and the reported metrics are consistent across the project.
->
-> The final version will include a consolidated comparison of the five machine learning problems, their best-performing models, key findings and the main lessons learned from the experiments.
+This section summarizes the main results obtained across the five machine learning problems, comparing the evaluated models and highlighting the most important findings and limitations.
+
+### P1 — Clan Member Role Classification
+
+The objective of this problem was to classify clan members into four roles: `member`, `admin`, `coLeader`, and `leader`.
+
+Three models were evaluated: Random Forest, XGBoost, and Logistic Regression.
+
+| Model | Accuracy | Weighted F1 | Macro F1 |
+|---|---:|---:|---:|
+| Random Forest | 0.5547 | 0.5459 | 0.4980 |
+| XGBoost | 0.5398 | 0.5345 | 0.4955 |
+| Logistic Regression | 0.4521 | 0.4624 | 0.4236 |
+
+Random Forest achieved the best overall performance according to accuracy and weighted F1. However, XGBoost achieved a higher F1-score for the `leader` class:
+
+| Model | Admin F1 | CoLeader F1 | Leader F1 | Member F1 |
+|---|---:|---:|---:|---:|
+| Random Forest | 0.4452 | 0.5104 | 0.3762 | 0.6603 |
+| XGBoost | 0.4389 | 0.4705 | 0.4185 | 0.6542 |
+| Logistic Regression | 0.4177 | 0.4002 | 0.3271 | 0.5494 |
+
+The results show that the `member` class was easier to identify than the leadership-related classes. The `leader` class remained difficult to classify, despite the use of class weighting.
+
+The main findings were:
+
+- Random Forest achieved the best overall performance.
+- XGBoost performed better for identifying the `leader` class.
+- Logistic Regression obtained the weakest results across the evaluated metrics.
+- The classification task is challenging because clan roles are not fully determined by the available features.
+- Overall accuracy alone does not represent performance equally across all classes.
+
+---
+
+### P2 — Clan Rank Regression
+
+The objective of this problem was to predict clan rank using clan and member-related features.
+
+The experiments compared different regression models and evaluated the effect of including trophy-related features.
+
+| Model | Dataset | MAE | RMSE | R² |
+|---|---|---:|---:|---:|
+| XGBoost + Optuna | With trophies | 2.0537 | 3.3092 | 0.9134 |
+| Random Forest | With trophies | 2.0882 | 3.4162 | 0.9077 |
+| XGBoost + Optuna | Without trophies | 2.5287 | 3.8863 | 0.8805 |
+| Random Forest | Without trophies | 2.5836 | 3.9731 | 0.8751 |
+| Ridge Regression | Without trophies | 4.1836 | 5.5754 | 0.7541 |
+
+The best-performing configuration was XGBoost optimized with Optuna using the dataset containing trophy-related features.
+
+The comparison between datasets indicates that trophy-related features contributed useful information for predicting clan rank. Both XGBoost and Random Forest performed better when these features were included.
+
+The main findings were:
+
+- XGBoost with Optuna achieved the best overall regression results.
+- Including trophy-related features improved the performance of both tree-based models.
+- Random Forest obtained results close to XGBoost.
+- Ridge Regression performed worse than the evaluated tree-based models.
+- Clan size, league-related features, and Town Hall-level distributions were among the most relevant features in the analyzed models.
+- The results suggest that clan rank is strongly related to the structural and progression characteristics of a clan.
+
+Feature importance analysis showed that features such as `members`, `league_tier_id`, and `town_hall_level_clan_pct` were important across several model configurations. Their relative importance varied depending on the model and dataset.
+
+---
+
+### P3 — Clan War Performance Regression
+
+The objective of this problem was to analyze the relationship between clan characteristics and historical war performance.
+
+The target variable was `war_success_rate`, calculated from the clan's historical war results. This problem was designed to analyze existing performance rather than predict the outcome of a future war.
+
+| Model | MAE | RMSE | R² |
+|---|---:|---:|---:|
+| Linear Regression | 0.1071 | 0.1366 | 0.0764 |
+| Random Forest + Randomized Search | 0.0986 | 0.1262 | 0.2113 |
+| Gradient Boosting + Optuna | 0.0980 | 0.1255 | 0.2206 |
+
+Gradient Boosting with Optuna achieved the best results among the evaluated models, although the overall R² score remained relatively low.
+
+The main findings were:
+
+- Gradient Boosting achieved the best performance in this experiment.
+- The improvement over Random Forest was relatively small.
+- Both tree-based models performed better than Linear Regression.
+- Clan rank was one of the most prominent features in the model.
+- The relatively low R² values indicate that the available features explain only part of the variation in historical war performance.
+- Increasing model complexity did not completely solve the limitations of the available data.
+
+This experiment highlighted the difference between obtaining a technically valid model and building a model with strong explanatory or predictive performance.
+
+---
+
+### P4 — Clan Performance Classification
+
+The objective of this problem was to classify clans into three performance categories: `low`, `medium`, and `high`.
+
+The dataset was created separately from the war performance regression problem. Features directly derived from the target variable were excluded to reduce target leakage.
+
+The class distribution was approximately balanced:
+
+- `medium`: 33.42%
+- `low`: 33.32%
+- `high`: 33.25%
+
+Three models were evaluated: Random Forest, XGBoost, and a Multilayer Perceptron (MLP).
+
+| Model | Accuracy | Balanced Accuracy | Macro F1 |
+|---|---:|---:|---:|
+| Random Forest | 0.4811 | 0.4811 | 0.4773 |
+| XGBoost + Optuna | 0.4986 | 0.4985 | 0.4925 |
+| MLP + Optuna | 0.5037 | 0.5038 | 0.4962 |
+
+The MLP model achieved the best results across the reported metrics, although the performance remained moderate.
+
+Because the classes were approximately balanced, a random classifier would achieve an accuracy of around 33.3%. The evaluated models performed above this baseline, but the results still indicate that the classification task is difficult.
+
+The main findings were:
+
+- MLP with Optuna achieved the best overall results.
+- XGBoost performed slightly better than Random Forest.
+- The models performed above the approximate random baseline.
+- The `medium` class was more difficult to classify than the `low` and `high` classes.
+- Excluding target-derived war features helped avoid direct leakage from the target variable.
+- The available clan features do not completely explain the resulting performance categories.
+
+---
+
+### P5 — Player Clustering
+
+The objective of this problem was to identify groups of players with similar progression and activity characteristics using unsupervised learning.
+
+The dataset contained approximately 836,000 players and 30 clustering features. The features were standardized before applying the clustering algorithms.
+
+#### K-Means
+
+K-Means was evaluated for values of K between 2 and 10. Silhouette scores were calculated using a sample of 50,000 players to reduce computational cost.
+
+The best configuration used two clusters:
+
+| Metric | Result |
+|---|---:|
+| Number of clusters | 2 |
+| Silhouette score | 0.3926 |
+| Cluster 0 size | 404,225 |
+| Cluster 1 size | 432,605 |
+
+The two clusters showed differences in progression and activity-related features.
+
+Cluster 0 generally contained players with higher values in features such as:
+
+- Capital contributions
+- Best trophies
+- War stars
+- Donations
+- Experience
+- Hero levels
+- Troop levels
+- Equipment levels
+- Town Hall level
+- Builder Hall level
+
+However, not every feature was higher in Cluster 0. For example, current trophies and some progression ratios showed different patterns between the clusters.
+
+Therefore, the clusters should be interpreted as broad groups of players with different progression and activity profiles rather than as strictly ordered skill levels.
+
+#### DBSCAN
+
+DBSCAN was also evaluated. The best tested configuration used an epsilon value of `0.3` and `min_samples=20`.
+
+| Metric | Result |
+|---|---:|
+| Number of clusters | 160 |
+| Noise points | 769,743 |
+| Noise percentage | 91.98% |
+| Silhouette score | 0.1373 |
+
+The high proportion of noise points and the low silhouette score indicated that this configuration was not a strong fit for the dataset.
+
+Agglomerative Clustering was not executed on the complete dataset because the estimated memory requirement was approximately 2.55 TiB.
+
+The main findings were:
+
+- K-Means with two clusters produced the most useful clustering result among the evaluated approaches.
+- The clusters mainly reflected differences in player progression and activity.
+- DBSCAN classified most observations as noise under the tested configuration.
+- The dataset size created significant computational constraints for some clustering algorithms.
+- Unsupervised results require careful interpretation because the discovered clusters do not necessarily represent explicit player skill categories.
+
+---
+
+### Main Findings and Lessons Learned
+
+The experiments provided several general conclusions about the project and its machine learning workflow:
+
+- Tree-based models performed well across several supervised learning problems, particularly for clan rank regression.
+- The best model depended on the specific problem and evaluation metric.
+- A model with the best overall performance was not necessarily the best model for every individual class.
+- Feature selection and the availability of informative features had a significant effect on model performance.
+- Including trophy-related features improved clan rank regression results.
+- Some problems, such as historical war performance analysis, remained difficult despite testing more complex models and hyperparameter optimization.
+- Preventing target leakage was essential when transforming the war performance regression problem into a classification task.
+- Unsupervised learning revealed broad player progression patterns, but the resulting clusters required careful interpretation.
+- Dataset size and computational cost influenced the choice of evaluation strategies and algorithms.
+- The experiments demonstrated that machine learning performance depends not only on the algorithm but also on the quality, relevance, and limitations of the available data.
 
 ## 🔬 Machine Learning Engineering
 
@@ -1751,8 +1950,7 @@ The project requires **Python 3.10+** and uses a virtual environment to isolate 
 Clone the repository and create a virtual environment:
 
 ```powershell
-git clone <https://github.com/oteope/clash-of-clans-ml-lab.git
-cd clash-of-clans-ml-lab>
+git clone https://github.com/oteope/clash-of-clans-ml-lab.git
 cd clash-of-clans-ml-lab
 
 python -m venv .venv
@@ -2241,11 +2439,10 @@ Several experiments produced results that were weaker or less useful than initia
 
 ## 🗺️ Roadmap
 
-The project is considered complete as a machine learning laboratory, but there are several possible directions for future development.
+The project currently provides a complete machine learning laboratory workflow, with several possible directions for future development.
 
 Potential improvements include:
 
-- Rework and finalize the **P1 dataset and results** after resolving the current data issue.
 - Expand the dataset with additional clans and players as more data becomes available.
 - Improve the data collection strategy to increase population diversity.
 - Explore additional feature engineering strategies for the existing problems.
