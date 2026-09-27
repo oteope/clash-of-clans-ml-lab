@@ -47,13 +47,13 @@ Raw JSON Data
         ↓
 Data Extraction & Normalization
         ↓
-Exploratory Data Analysis
-        ↓
 Data Preprocessing
         ↓
 Feature Engineering
         ↓
 Problem-Specific Datasets
+        ↓
+Exploratory Data Analysis
         ↓
 Model Training
         ↓
@@ -173,11 +173,12 @@ This keeps each dataset purpose-built for its own machine learning objective rat
 
 ```text
 data/datasets/
-├── P1 dataset
-├── P2 dataset
-├── P3 dataset
-├── P4 dataset
-└── P5 dataset
+├── clan_performance_classification.parquet       # P4
+├── clan_rank_regression_with_trophies.parquet    # P2
+├── clan_rank_regression_without_trophies.parquet # P2
+├── clan_war_performance_regression.parquet       # P3
+├── player_clustering.parquet                     # P5
+└── role_classification.parquet                   # P1                   
 ```
 
 All five datasets originate from the same raw data but differ in feature engineering, selected variables, and target. The largest is the player-clustering dataset (P5), with approximately **836,000 players**. Detailed characteristics and distributions for each dataset are covered in *Machine Learning Problems*, below.
@@ -198,9 +199,13 @@ Because preprocessing and dataset construction happened before EDA, the datasets
 
 Both **Pearson** and **Spearman** correlation were used to study relationships between variables. This distinction mattered because a high correlation doesn't automatically justify removing a feature — many Clash of Clans variables are naturally correlated, since the game is built around player progression. A player's **Town Hall level**, for instance, is naturally related to troop levels, spell levels, and other progression variables. Removing a feature purely because it correlates strongly with another risks discarding meaningful information. Correlation analysis was therefore used to **understand the data and flag potentially problematic relationships**, not as an automatic feature-removal rule.
 
+![Pearson Correlation Heatmap](notebooks/eda/files/eda_p5_files/eda_p5_10_1.png)
+
 ### Target and Feature Distributions
 
 Distributions were analyzed separately for each problem, in the context of its specific objective, to identify highly concentrated or skewed variables, extreme values, class imbalances, strong inter-variable relationships, and potentially redundant or proxy features. The resulting visualizations inform the feature and modelling decisions described for each problem.
+
+![Clan Rank Distribution](notebooks/eda/files/eda_p2_files/eda_p2_6_1.png)
 
 ### EDA Findings
 
@@ -429,7 +434,7 @@ Three regression models were introduced progressively, from simplest to most fle
 
 #### Feature Importance
 
-`clan_rank` was one of the most prominent features — intuitive, since a clan's overall rank is generally tied to a longer progression history, which also relates to accumulated war experience.
+`clan_level` was one of the most prominent features — intuitive, since a clan's overall level is generally tied to a longer progression history, which also relates to accumulated war experience.
 
 ![P3 Feature Importance Comparison](src/results/P3/08_feature_importance_comparison.png)
 
@@ -727,6 +732,8 @@ A trained model isn't independent of the feature schema used to train it. P2 sur
 Early experiments relied more on manually adjusting parameters and observing the effect — useful for building intuition about what each hyperparameter actually controls, rather than treating models as black boxes. **Optuna** was introduced later for systematic search, evaluating configurations and progressively narrowing in on better-performing regions of the hyperparameter space. P4, for instance, used **50 trials** for both XGBoost and the MLP specifically to test whether a larger optimization budget than used elsewhere would produce a meaningful improvement.
 
 Optuna served two purposes: **practical optimization** (efficiently searching a large space) and **understanding optimization behavior** (seeing how configurations affected performance and why). Automated search was most useful when paired with an understanding of what was actually being optimized, rather than used as a black box.
+
+![MLflow and Optuna](assets/mlflow_and_optuna.png)
 
 ### Engineering Philosophy
 
