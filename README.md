@@ -326,28 +326,30 @@ Models were scored with **MAE** (average error, in ranking positions), **RMSE** 
 
 **With trophies:**
 
-| Model | MAE | RMSE | R² |
-|---|---:|---:|---:|
-| **XGBoost + Optuna** | **2.0537** | **3.3092** | **0.9134** |
-| Random Forest v2 | 2.0882 | 3.4162 | 0.9077 |
-| Ridge Regression | 3.96 | 5.293 | 0.77 |
+| Model | MAE | MSE | RMSE | R² |
+|---|---:|---:|---:|---:|
+| **XGBoost** | **3.5295** | **28.9475** | **5.3803** | **0.7710** |
+| Random Forest | 3.6783 | 31.3120 | 5.5957 | 0.7523 |
+| Ridge Regression | 5.0487 | 44.9991 | 6.7081 | 0.6440 |
 
 ![P2 Actual vs Predicted — XGBoost](src/results/P2/with_trophies/01_actual_vs_predicted_xgboost.png)
 
 **Without trophies:**
 
-| Model | MAE | RMSE | R² |
-|---|---:|---:|---:|
-| **XGBoost + Optuna** | **2.5287** | **3.8863** | **0.8805** |
-| Random Forest v2 | 2.5836 | 3.9731 | 0.8751 |
-| Ridge Regression | 4.1836 | 5.5754 | 0.7541 |
+| Model | MAE | MSE | RMSE | R² |
+|---|---:|---:|---:|---:|
+| **XGBoost** | **4.1183** | **36.1568** | **6.0131** | **0.7140** |
+| Random Forest | 4.2481 | 38.1002 | 6.1725 | 0.6986 |
+| Ridge Regression | 5.1968 | 48.6410 | 6.9743 | 0.6152 |
+
+**Best model by dataset variant:**
 
 | Dataset | Best Model | MAE | RMSE | R² |
 |---|---|---:|---:|---:|
-| **With trophies** | XGBoost + Optuna | **2.0537** | **3.3092** | **0.9134** |
-| **Without trophies** | XGBoost + Optuna | **2.5287** | **3.8863** | **0.8805** |
+| **With trophies** | XGBoost | **3.5295** | **5.3803** | **0.7710** |
+| **Without trophies** | XGBoost | **4.1183** | **6.0131** | **0.7140** |
 
-Removing trophy-related features raised MAE and RMSE and lowered R², as expected — but the model still explained **88.05%** of the variance in `clan_rank` without them, showing that trophies improve performance without being the only usable signal.
+Removing trophy-related features increased XGBoost's MAE from **3.5295 to 4.1183** and RMSE from **5.3803 to 6.0131**, while R² decreased from **0.7710 to 0.7140**. Trophies therefore contribute useful predictive information, although the remaining features still explain **71.40% of the variance** in `clan_rank`.
 
 ![P2 R² Comparison](src/results/P2/07_r2_comparison.png)
 
@@ -369,13 +371,15 @@ Town Hall level determines a player's league context (via league floors), and tr
 
 #### Feature Importance
 
-Across the evaluated models, features such as `members`, `league_tier_id`, and `town_hall_level_clan_pct` were consistently among the most important, though their exact ranking varied by model and dataset variant.
+Feature importance was used to examine which remaining variables contributed most to clan-rank predictions. Since `league_id` and `league_tier_id` were excluded from the final feature matrices, the analysis focuses on the variables actually used by the trained models. Importance rankings can differ between models and dataset variants.
 
 ![P2 Feature Importance Comparison](src/results/P2/with_trophies/08_feature_importance_comparison.png)
 
 #### Analysis
 
-Removing a highly predictive group of features didn't make the model useless — the remaining player and progression features still let XGBoost explain roughly **88%** of the variance in clan rank. This reinforced a broader lesson from the EDA: strong correlation with a target should be investigated, not assumed to be leakage. XGBoost was the strongest model in both dataset variants; more generally across the project, **XGBoost performed particularly well on the regression problems**, while Random Forest was comparatively stronger on the classification problems.
+XGBoost achieved the best results in both dataset variants. Removing trophy-related features reduced its R² from **0.7710 to 0.7140**, while the model retained substantial predictive performance using the remaining features. This shows that trophy-related variables contribute useful information, but they are not the only source of predictive signal for `clan_rank`.
+
+The comparison also highlights the importance of evaluating feature groups empirically rather than judging their usefulness from correlation alone. More broadly across the project, **XGBoost performed particularly well on regression tasks**, while Random Forest was comparatively stronger on classification tasks.
 
 #### Model Reproducibility: A Feature-Mismatch Lesson
 
@@ -383,11 +387,10 @@ Loading a trained model from MLflow isn't just a matter of the model file existi
 
 #### Key Takeaways
 
-- Strong correlation does not automatically mean data leakage — potential proxy variables should be investigated, not removed blindly.
-- Comparing models with and without a potentially dominant feature group quantifies its actual contribution.
-- Trophy-related variables clearly help, but aren't essential: the model reached R² = 0.8805 without them.
-- **XGBoost + Optuna** achieved the best results in both variants: **R² = 0.9134 with trophies, 0.8805 without**.
-- Optuna gave a more systematic approach to XGBoost tuning than manual search.
+- Strong correlation does not automatically imply data leakage; potentially problematic features should be investigated rather than removed blindly.
+- Comparing models with and without a feature group helps quantify its contribution to predictive performance.
+- Trophy-related features improved results: XGBoost achieved **R² = 0.7710 with trophies** and **R² = 0.7140 without them**.
+- **XGBoost** was the strongest model in both variants, outperforming Random Forest and Ridge Regression on the reported metrics.
 - A trained model's feature representation must be preserved and validated alongside the model artifact itself.
 
 ### P3 — Clan War Performance Regression
@@ -458,7 +461,7 @@ Non-linear models clearly beat the linear baseline, but added complexity produce
 - `war_success_rate = war_wins / war_total`, computed only for clans with sufficient war history.
 - Tree-based models clearly outperformed the Linear Regression baseline.
 - **Gradient Boosting + Optuna** achieved the best result: **R² = 0.2206**.
-- `clan_rank` was the most prominent feature.
+- `clan_level` was the most prominent feature.
 - Increasing model complexity did not solve the problem's underlying difficulty — a lesson that motivated reframing the problem as classification in **P4**.
 
 ### P4 — Clan Performance Classification
@@ -648,7 +651,7 @@ The main result is that the player population splits into two broad profiles —
 | Problem | Task | Best Model | Headline Result |
 |---|---|---|---|
 | **P1** | Role classification (4 classes) | Random Forest | 55.47% accuracy · 0.4980 macro F1 |
-| **P2** | Clan rank regression | XGBoost + Optuna | R² = 0.9134 (with trophies) / 0.8805 (without) |
+| **P2** | Clan rank regression | XGBoost | R² = 0.7710 (with trophies) / 0.7140 (without) |
 | **P3** | War success rate regression | Gradient Boosting + Optuna | R² = 0.2206 |
 | **P4** | War performance classification (3 classes) | MLP + Optuna | 50.37% accuracy · 0.4962 macro F1 |
 | **P5** | Player clustering | K-Means (K = 2) | Silhouette score = 0.3926 |
@@ -657,7 +660,7 @@ The main result is that the player population splits into two broad profiles —
 
 - Tree-based models performed well across most supervised problems, particularly clan rank regression (P2).
 - The best model depended on the specific problem and metric — a model with the best overall performance wasn't necessarily best for every class (XGBoost beat Random Forest on P1's `leader` F1-score despite Random Forest's higher overall accuracy).
-- Feature availability and selection had a significant effect on performance; including trophy-related features clearly improved P2's results.
+- Feature availability and selection had a measurable effect on performance: removing trophy-related features reduced P2's XGBoost R² from 0.7710 to 0.7140.
 - Some problems — notably P3's historical war-performance analysis — remained difficult to model accurately even after testing more complex models and hyperparameter optimization.
 - Reformulating a difficult regression problem as classification (P3 → P4) made the underlying signal more tractable to learn.
 - Preventing target leakage was essential when building P4 from P3's underlying data.
