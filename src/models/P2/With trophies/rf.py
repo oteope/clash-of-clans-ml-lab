@@ -33,6 +33,10 @@ X = data.drop(
         "type",
         "capital_contributions",
         "clan_mean_capital_contributions",
+        "league_name",
+        "league_tier_name",
+        "league_id",
+        "league_tier_id",
     ],
     errors="ignore",
     )

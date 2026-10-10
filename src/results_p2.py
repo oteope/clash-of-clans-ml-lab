@@ -25,6 +25,7 @@ from sklearn.metrics import (
     r2_score,
 )
 from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline
 
 
 # =============================================================================
@@ -42,23 +43,29 @@ if str(ROOT_DIR) not in sys.path:
 # =============================================================================
 
 from mlflow_tracking.tracking_utils import configure_tracking
+from mlflow_tracking.experiments import get_experiment_name
 
 
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
 
+# Each cell takes a Run ID (pin that exact run), None (skip the
+# model), or "latest" (resolve to the most recent finished run named
+# like that model's training script logs it -- see RUN ID RESOLUTION
+# below). The old hardcoded Run IDs pointed at pre-leakage-fix models,
+# so "latest" is now the default for all six.
 MODEL_RUN_IDS = {
     "with_trophies": {
-        "xgboost": "83396bc7df4946b3bfd388b32afe8cb5",
-        "random_forest": "aa9291a0474b451b8d36b25e226aed5d",
-        "ridge": "83532504b72142088051285c008ae4f0",
+        "xgboost": "57bdfeab526340ef92469196517c68f7",
+        "random_forest": "c4bce96f4a944365873234fcee2d0626",
+        "ridge": "04e5987ec15247aaafe876907ef56371",
     },
 
     "without_trophies": {
-        "xgboost": "bcb7d9873163449697ca75b2c1cbbba5",
-        "random_forest": "7c4018cff56846bd8cd591d6624aaed9",
-        "ridge": "407b15aa60a74dd0bdf879a55f012d01",
+        "xgboost": "2cabf9721e0a4ff7bfdd0ffc12500399",
+        "random_forest": "3fc47ef1946545dea10c1698f30afec8",
+        "ridge": "d4e20224a4c14aeabad42135c67a995c",
     },
 }
 
@@ -184,23 +191,11 @@ def _load_dataset(path: Path) -> pd.DataFrame:
 # FEATURE PREPARATION
 # =============================================================================
 #
-# NOTE: this stays as it was. It intentionally does NOT hardcode the
-# training-time column drops (league_name, war_frequency, capital_league,
-# etc.) beyond the obvious ID/target columns. Those extra columns are
-# non-numeric (clan/player league and category labels from the Clash of
-# Clans API), so `pd.to_numeric(errors="coerce")` turns them into all-NaN
-# columns, and the all-NaN cleanup below removes them -- reproducing the
-# same effective feature set the training scripts build explicitly,
-# without duplicating that column list here (and risking it drifting out
-# of sync with the six training scripts again).
-#
-# What this function does NOT do is decide which of the *numeric* columns
-# (e.g. capital_contributions / clan_mean_capital_contributions) a given
-# model was trained with -- the six P2 training scripts are not all
-# consistent with each other about those two columns. That's handled
-# per-model in `_prepare_model_input`, using each loaded model's own
-# `feature_names_in_` / booster feature names as the source of truth,
-# rather than duplicating a second guess here.
+# Doesn't hardcode which non-ID columns to drop: non-numeric columns
+# (league names, category labels, etc.) become all-NaN under
+# pd.to_numeric(errors="coerce") and get dropped below, which already
+# matches what the training scripts need. Per-model differences in the
+# remaining numeric columns are handled by name in _prepare_model_input.
 # =============================================================================
 
 def _prepare_features(
@@ -322,35 +317,11 @@ def _get_test_indices(
 # MLflow 3 MODEL LOADING
 # =============================================================================
 #
-# Diagnosis (see chat for the full writeup and the GitHub issues this
-# matches: mlflow/mlflow#16429 and #16501):
-#
-# Reproduced directly against a real local MLflow 3.15.2 install: calling
-# mlflow.sklearn.log_model(model, artifact_path="model", ...) -- exactly
-# what log_model_and_artifacts() in this project does -- no longer writes
-# anything under the run's own artifact directory. runs:/<run_id>/model
-# has nothing to find, so "please ensure the path is correct" is a
-# correct error, not a fluke. The MLmodel/model.pkl files only exist
-# under a separate LoggedModel-scoped location.
-#
-# Also reproduced: mlflow.search_logged_models(filter_string=f"source_run_id='{run_id}'")
-# returns 0 results even when a matching row genuinely exists in the
-# logged_models table with that exact source_run_id. That search/filter
-# path is not reliable here -- which is exactly the "Found 0 Logged
-# Model(s)" you were seeing.
-#
-# What *does* reliably work, confirmed against a live run: asking the RUN
-# itself which LoggedModel(s) it produced, via run.outputs.model_outputs,
-# then loading models:/<model_id> with the flavor-native loader. This is
-# strategy 1 below.
-#
-# Ridge/XGBoost currently succeeding via the old runs:/<run_id>/model path
-# most likely means those specific runs were logged under a different
-# MLflow install than whatever was active for the Random Forest runs --
-# requirements.txt only pins mlflow>=2.10.0, so a `pip install` run at a
-# different time could easily have resolved to a different 2.x/3.x
-# version. Strategies 2-4 below keep that path working for whichever
-# runs it already works for, while fixing the ones it doesn't.
+# MLflow 3's LoggedModel API moved a run's logged model out of its own
+# artifact directory into a separate LoggedModel-scoped location, so
+# the classic runs:/<run_id>/model path no longer reliably finds it.
+# _load_model_from_run below tries the correct MLflow-3 lookup first,
+# then falls back for any run still logged the older way.
 # =============================================================================
 
 def _file_uri_to_local_path(uri: str) -> Path:
@@ -434,33 +405,19 @@ def _load_model_from_run(
     model_key: str,
 ) -> Any:
     """
-    Load a model logged with MLflow 3 via log_model_and_artifacts().
+    Load a model logged via log_model_and_artifacts(), trying in order:
 
-    Strategy, in order (each one printed clearly so a failure shows the
-    real error and the exact path/location that was tried):
+      1. run.outputs.model_outputs -> models:/<model_id> (the correct
+         MLflow 3 lookup).
+      2. Legacy runs:/<run_id>/model and .../modelo paths.
+      3. Direct local artifact inspection, bypassing runs:/ and
+         models:/ URI resolution entirely.
+      4. Raw pickle.load() on model.pkl, as a last resort.
 
-      1. run.outputs.model_outputs -> models:/<model_id>
-         The correct MLflow-3-native lookup. Confirmed working in testing.
-      2. Legacy runs:/<run_id>/model and runs:/<run_id>/modelo
-         Kept for any run still logged the classic (pre-3.x-behavior) way.
-      3. Direct local artifact inspection: resolve the run's and/or the
-         LoggedModel's artifact_location file:// URI to a real path,
-         list what's actually there, and load straight from that local
-         directory -- bypassing runs:/ and models:/ URI resolution
-         entirely.
-      4. Raw pickle.load() on model.pkl next to whatever MLmodel file
-         strategy 3 found, matching serialization_format="pickle" used
-         at training time. Absolute last resort.
-
-    Every exception is printed as "ExceptionType: message" rather than
-    just "message" -- some exceptions (a bare MemoryError in particular)
-    stringify to an EMPTY string, which otherwise looks exactly like a
-    silent, unexplained failure instead of what it actually is. File
-    sizes for whatever's found on disk are also printed up front, before
-    any load is attempted, so a too-large-to-load model.pkl is visible
-    immediately rather than inferred after the fact.
-
-    Returns the raw flavor object, never a pyfunc wrapper.
+    Every exception prints its type, not just its message -- a bare
+    MemoryError stringifies to nothing, which otherwise looks like an
+    unexplained silent failure. Returns the raw flavor object, never a
+    pyfunc wrapper.
     """
 
     client = MlflowClient()
@@ -687,6 +644,131 @@ def _load_model_from_run(
 
 
 # =============================================================================
+# RUN ID RESOLUTION ("latest" champion run per variant/model)
+# =============================================================================
+#
+# CHAMPION_RUN_NAMES mirrors the literal run_name="..." each training
+# script logs under (src/models/P2/{With,Without} trophies/*.py) -- for
+# XGBoost, the "Optuna Champion" run that logs a model, never one of
+# the "Optuna Trial N" runs. Resolution below is an exact match against
+# the mlflow.runName tag, typos (e.g. the missing space) included.
+# =============================================================================
+
+LATEST_RUN_SENTINEL = "latest"
+
+CHAMPION_RUN_NAMES = {
+    "with_trophies": {
+        "xgboost": "Optuna Champion XGBoost - with trophies",
+        "random_forest": "RF v2 - with trophies",
+        "ridge": "v3 Ridge regression - with trophies",
+    },
+    "without_trophies": {
+        "xgboost": "Optuna Champion XGBoost - without trophies",
+        "random_forest": "RF v2- without trophies",
+        "ridge": "v2 Ridge regression - without trophies",
+    },
+}
+
+
+def _find_latest_run_id_by_name(
+    client: MlflowClient,
+    experiment_name: str,
+    run_name: str,
+) -> Optional[str]:
+    """
+    Return the run_id of the most recent FINISHED run named exactly
+    `run_name` inside `experiment_name`, or None if the experiment
+    doesn't exist yet or no run with that exact name has finished in it.
+
+    "Most recent" is by start_time, which is exactly what makes this
+    track retraining automatically: every time one of the six training
+    scripts is rerun, it logs a new run under the same hardcoded
+    run_name, and that new run simply becomes the one with the latest
+    start_time -- nothing here needs to change for that to be picked up.
+    """
+
+    experiment = client.get_experiment_by_name(experiment_name)
+
+    if experiment is None:
+        print(
+            f"    Experiment '{experiment_name}' does not exist yet "
+            f"(no runs have been logged under it)."
+        )
+        return None
+
+    runs = client.search_runs(
+        experiment_ids=[experiment.experiment_id],
+        filter_string=(
+            f"tags.`mlflow.runName` = '{run_name}' "
+            f"and attributes.status = 'FINISHED'"
+        ),
+        order_by=["attributes.start_time DESC"],
+        max_results=1,
+    )
+
+    if not runs:
+        print(
+            f"    No finished run named '{run_name}' found in "
+            f"experiment '{experiment_name}'."
+        )
+        return None
+
+    run = runs[0]
+
+    print(
+        f"    Resolved '{run_name}' -> run_id={run.info.run_id} "
+        f"(started {pd.Timestamp(run.info.start_time, unit='ms')})"
+    )
+
+    return run.info.run_id
+
+
+def _resolve_run_id(
+    client: MlflowClient,
+    experiment_name: str,
+    variant_name: str,
+    model_key: str,
+    configured_run_id: Optional[str],
+) -> Optional[str]:
+    """
+    Turn one MODEL_RUN_IDS[variant][model] entry into an actual Run ID.
+
+      - None               -> None (caller skips this model, unchanged).
+      - LATEST_RUN_SENTINEL -> look up CHAMPION_RUN_NAMES[variant][model]
+        in MLflow and return the most recent finished run's ID, or None
+        if no such run has been logged (yet).
+      - anything else      -> returned as-is: an explicit, pinned Run ID.
+    """
+
+    if configured_run_id is None:
+        return None
+
+    if configured_run_id != LATEST_RUN_SENTINEL:
+        return configured_run_id
+
+    run_name = CHAMPION_RUN_NAMES.get(variant_name, {}).get(model_key)
+
+    if run_name is None:
+        print(
+            f"    No champion run_name configured for "
+            f"{variant_name}/{model_key}; cannot resolve "
+            f"'{LATEST_RUN_SENTINEL}'."
+        )
+        return None
+
+    print(
+        f"    Resolving '{LATEST_RUN_SENTINEL}' run for "
+        f"{variant_name}/{model_key} (run_name='{run_name}')..."
+    )
+
+    return _find_latest_run_id_by_name(
+        client=client,
+        experiment_name=experiment_name,
+        run_name=run_name,
+    )
+
+
+# =============================================================================
 # MODEL INPUT
 # =============================================================================
 
@@ -696,17 +778,13 @@ def _prepare_model_input(
     X_test: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Align X_test to exactly the columns the loaded model was trained on.
-
-    Uses feature *names* (feature_names_in_ for sklearn-flavor models,
-    including XGBRegressor's sklearn API; the booster's feature_names as a
-    fallback for xgboost), not just a feature count. This matters here
-    specifically because the six P2 training scripts are not all
-    consistent with each other about two columns (capital_contributions,
-    clan_mean_capital_contributions) -- with_trophies always drops them,
-    without_trophies keeps them for random_forest/ridge but drops them for
-    xgboost. Selecting by name handles all six combinations correctly
-    without hardcoding any of them here.
+    Align X_test to exactly the columns the loaded model was trained
+    on, using feature *names* (feature_names_in_, including for a
+    Pipeline-wrapped Ridge; the booster's feature_names for xgboost as
+    a fallback) rather than a feature count. Each of the six P2
+    training scripts keeps its own column-drop list, so feature sets
+    can differ between models/variants -- selecting by name handles
+    that without hardcoding a column list here.
     """
 
     X_model = X_test.copy()
@@ -1119,18 +1197,13 @@ def _extract_feature_importance(
 ) -> Optional[pd.Series]:
     """
     Returns feature_importances_ indexed by name, or None if the model
-    doesn't expose it (Ridge doesn't -- handled separately below).
+    doesn't expose it (Ridge doesn't -- see _extract_ridge_importance).
 
-    Prefers the model's OWN feature_names_in_ over the shared
-    feature_names list built from X_test. Confirmed the hard way in P4:
-    if this specific model was trained on a different column subset than
-    the other models (exactly the kind of per-model inconsistency
-    already found between the six P2 training scripts --
-    capital_contributions present for some, absent for others),
-    feature_importances_ comes back shorter than the shared list, and
-    indexing it with the wrong names either raises ValueError or, worse,
-    would silently mislabel importances if the lengths matched by
-    coincidence.
+    Prefers the model's own feature_names_in_ over the shared
+    feature_names list, since each training script's own drop list can
+    leave a given model with a different column subset -- indexing
+    feature_importances_ with the wrong names would raise, or worse,
+    silently mislabel importances if the lengths happened to match.
     """
 
     importances = getattr(
@@ -1190,27 +1263,30 @@ def _extract_ridge_importance(
     feature_names: List[str],
 ) -> Optional[pd.Series]:
     """
-    Ridge has no feature_importances_ -- its coefficients are the
-    equivalent, but a RAW coefficient conflates effect size with that
-    feature's natural scale (a coefficient on "trophies", which ranges in
-    the thousands, is not comparable to one on a 0-1 ratio just because
-    both are "a coefficient"). Multiplying each coefficient by that
-    feature's own standard deviation (computed from X_reference, i.e.
-    X_test -- an unbiased sample of the same distribution the model sees
-    at evaluation time) rescales every feature onto the same basis: "how
-    much does a real one-standard-deviation change in this feature move
-    the prediction". That is what actually makes it comparable to
-    RF/XGBoost's impurity-based importances at all, whether or not Ridge
-    itself was fit on pre-standardized features.
+    Ridge has no feature_importances_; its coefficients are the
+    equivalent, but a raw coefficient conflates effect size with the
+    feature's own scale. Multiplying by that feature's standard
+    deviation (from X_reference) puts every feature on the same basis:
+    the effect of a one-std-dev change, comparable to RF/XGBoost's
+    impurity-based importances.
 
-    Returns a DataFrame with both the signed standardized coefficient
-    (which direction the feature pushes the prediction) and its absolute
-    value (the magnitude used for the cross-model importance comparison,
-    to match RF/XGBoost's non-negative importances).
+    Ridge is trained inside a Pipeline([imputer, scaler, ridge]) in
+    this project, so the loaded object has no `.coef_` of its own --
+    this unwraps the Pipeline's last step to reach it. That Ridge's
+    coefficients are already standardized by the Pipeline's own
+    StandardScaler, so for that case the manual std-multiplication
+    below is skipped (doing it again would double-standardize). A bare
+    Ridge (no Pipeline) still goes through the manual step as before.
+
+    Returns signed and absolute standardized coefficients.
     """
 
+    is_pipeline = isinstance(model, Pipeline)
+
+    estimator = model.steps[-1][1] if is_pipeline else model
+
     coefficients = getattr(
-        model,
+        estimator,
         "coef_",
         None,
     )
@@ -1220,6 +1296,10 @@ def _extract_ridge_importance(
 
     coefficients = np.asarray(coefficients).ravel()
 
+    # A Pipeline's inner estimator never has its own feature_names_in_
+    # (it only ever sees the unlabeled array the previous step
+    # produces) -- the real names live on the Pipeline itself, which
+    # delegates feature_names_in_ to its first step.
     own_feature_names = getattr(model, "feature_names_in_", None)
 
     if own_feature_names is not None and len(list(own_feature_names)) == len(coefficients):
@@ -1234,17 +1314,27 @@ def _extract_ridge_importance(
         )
         return None
 
-    missing = [n for n in names if n not in X_reference.columns]
-    if missing:
-        print(
-            f"    Skipping Ridge coefficients: {missing} not present in "
-            f"the evaluation data, can't compute feature std for scaling."
-        )
-        return None
+    if is_pipeline:
 
-    feature_stds = X_reference[names].std().replace(0, np.nan)
+        # Already standardized by the Pipeline's own StandardScaler --
+        # see the docstring above. There's no raw-unit coefficient left
+        # to rescale here, so there's also no X_reference lookup and no
+        # missing-column case to guard against for this branch.
+        standardized = coefficients
 
-    standardized = coefficients * feature_stds.values
+    else:
+
+        missing = [n for n in names if n not in X_reference.columns]
+        if missing:
+            print(
+                f"    Skipping Ridge coefficients: {missing} not present in "
+                f"the evaluation data, can't compute feature std for scaling."
+            )
+            return None
+
+        feature_stds = X_reference[names].std().replace(0, np.nan)
+
+        standardized = coefficients * feature_stds.values
 
     return pd.DataFrame({
         "coefficient_standardized": standardized,
@@ -1336,28 +1426,11 @@ def _plot_feature_importance_comparison(
 # GLOBAL FEATURE IMPORTANCE COMPARISON (both variants, all models)
 # =============================================================================
 #
-# The per-variant comparison above (08_feature_importance_comparison.png)
-# only puts the models of ONE variant side by side. The functions below
-# put every model that loaded successfully -- with_trophies AND
-# without_trophies -- into a single table and two charts, so the effect
-# of removing the trophy features can be read model by model (the
-# with/without pair of the same model sits together) next to the
-# differences between the models themselves.
-#
-# Same convention as the per-variant comparison: every (variant, model)
-# column is normalized to sum to 1 over that model's OWN feature set, so
-# columns read as "share of this model's total importance", not as the
-# same unit (Ridge's standardized coefficients and the trees' impurity
-# importances never are). One consequence to keep in mind when reading
-# with vs without: removing the trophy features hands their share to the
-# remaining features, so a feature gaining share in without_trophies is
-# expected -- what the comparison shows is WHICH features absorb it.
-#
-# A feature that is not in a model's feature set at all (e.g. the trophy
-# columns in a without_trophies model) stays NaN in the table -- NOT 0 --
-# so "this model never saw the feature" remains distinguishable from
-# "this model saw it and it carries no importance". The bar chart draws
-# it as an empty bar; the heatmap draws it as a grey "n/a" cell.
+# Unlike 08_feature_importance_comparison.png (one variant at a time),
+# this puts every model that loaded successfully in BOTH variants into
+# one table/chart, so with_trophies vs without_trophies of the same
+# model sit side by side. Same per-model normalization as the
+# per-variant version; see the functions below for the NaN-vs-0 rule.
 # =============================================================================
 
 def _build_global_importance_table(
@@ -1877,6 +1950,9 @@ def main() -> None:
 
     configure_tracking()
 
+    mlflow_client = MlflowClient()
+    p2_experiment_name = get_experiment_name("p2")
+
     print(
         "\u2713 MLflow configured\n"
     )
@@ -2068,6 +2144,23 @@ def main() -> None:
 
                 continue
 
+            resolved_run_id = _resolve_run_id(
+                client=mlflow_client,
+                experiment_name=p2_experiment_name,
+                variant_name=variant_name,
+                model_key=model_key,
+                configured_run_id=run_id,
+            )
+
+            if resolved_run_id is None:
+
+                print(
+                    f"  Skipping {model_key}: could not resolve a Run "
+                    f"ID (configured as '{run_id}')."
+                )
+
+                continue
+
             model = None
             y_pred = None
 
@@ -2078,11 +2171,12 @@ def main() -> None:
             try:
 
                 print(
-                    f"\n  Loading {model_key}..."
+                    f"\n  Loading {model_key} "
+                    f"(run_id={resolved_run_id})..."
                 )
 
                 model = _load_model_from_run(
-                    run_id=run_id,
+                    run_id=resolved_run_id,
                     model_key=model_key,
                 )
 
@@ -2098,7 +2192,8 @@ def main() -> None:
                 )
 
                 print(
-                    f"  Run ID: {run_id}"
+                    f"  Run ID: {resolved_run_id} "
+                    f"(configured as '{run_id}')"
                 )
 
                 print(
@@ -2169,7 +2264,8 @@ def main() -> None:
                 )
 
                 print(
-                    f"  Run ID: {run_id}"
+                    f"  Run ID: {resolved_run_id} "
+                    f"(configured as '{run_id}')"
                 )
 
                 print(
@@ -2183,7 +2279,7 @@ def main() -> None:
 
                 continue
 
-            metrics["run_id"] = run_id
+            metrics["run_id"] = resolved_run_id
 
             all_metrics.append(
                 metrics
